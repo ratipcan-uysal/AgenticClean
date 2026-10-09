@@ -1,6 +1,6 @@
 # AgenticClean v0.7.0-alpha.1
 
-Source-only early access, macOS only. MIT licensed. No notarized application binary is provided in this release.
+Early access, macOS only. MIT licensed. The release includes an Apple Silicon ZIP signed with Developer ID and notarized by Apple.
 
 ## What is included
 
@@ -22,6 +22,8 @@ Declared deployment target is macOS 14, but that is not a compatibility certific
 
 Authentication-required model APIs, custom Docker installations, wildcard provider listeners, llama.cpp router unload, generic GPU usage and disk latency are unsupported. “Unknown” readings are not zero. A project working directory does not prove chat ownership, model inactivity or safe termination.
 
-## Before a downloadable release
+## Binary alpha verification
 
-Developer ID signing, Apple notarization, a downloaded-package Gatekeeper check on another Mac and observed target-user tasks are required. Do not disable macOS security protections to treat this source alpha as a signed release.
+On 2026-10-09, the arm64 build of commit `6ab4f93` was signed with Developer ID, accepted by Apple notarization, and stapled. The final ZIP was extracted locally; signature verification, staple validation, Gatekeeper assessment and SHA256 verification passed. These checks were on the development Mac, not a second machine.
+
+Before general availability, validate browser download and installation on another physical Mac and observe target-user tasks. Intel and minimum-OS compatibility are not verified. Do not disable macOS security protections.

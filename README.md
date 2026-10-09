@@ -1,6 +1,6 @@
 # AgenticClean
 
-> **Kaynak kodu alpha — v0.7.0-alpha.1.** Bu sürüm geliştiriciler ve erken test kullanıcıları içindir. Hazır, Apple tarafından notarize edilmiş bir indirme sunulmaz; kaynak koddan derleme gerekir. Genel kullanıma hazır veya bütün Mac’lerde doğrulanmış bir ürün değildir.
+> **Alpha — v0.7.0-alpha.1.** Erken test kullanıcıları için Apple Silicon (M serisi) ZIP indirmesi mevcuttur; Developer ID ile imzalanmış ve Apple tarafından notarize edilmiştir. Genel kullanıma hazır veya bütün Mac’lerde doğrulanmış bir ürün değildir.
 >
 > **Destek:** macOS kaynak izleme, kanıta dayalı proje bağlantıları, onaylı manuel durdurma, yerel AI servislerini inceleme ve doğrulanmış Xcode Build çıktıları için Çöp Sepeti akışı.
 >
@@ -9,6 +9,10 @@
 Mac’inde çalışan işleri gör: bağımsız yerel AI sunucuları, geliştirme ortamları, uygulamalar ve projeler. CPU ve bellek kullanımını incele; etkisini gözden geçirerek durdur veya doğrulanmış derleme çıktılarını Çöp Kutusu’na taşı.
 
 Ücretsiz, açık kaynak, yerel macOS menü çubuğu uygulaması. [English](README.en.md) · [MIT lisansı](LICENSE)
+
+## İndir ve kur
+
+[Alpha indirme sayfasından](https://github.com/ratipcan-uysal/AgenticClean/releases/tag/v0.7.0-alpha.1) `AgenticClean-0.7.0-arm64.zip` dosyasını indir, ZIP’i aç ve `AgenticClean.app` dosyasını Uygulamalar klasörüne taşı. Uygulamayı aç; menü çubuğundan erişebilirsin. macOS 14+ hedeflenir; Intel paketi sunulmaz. İkinci fiziksel Mac üzerinde kurulum doğrulaması henüz yapılmadı. `.cmd` veya terminal betiği gerekmez.
 
 ## Kullanım
 
