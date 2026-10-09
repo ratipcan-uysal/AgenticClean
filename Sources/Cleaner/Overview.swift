@@ -252,112 +252,12 @@ struct SystemDetails: View {
     VStack(alignment: .leading, spacing: 14) {
       ScrollView {
         VStack(alignment: .leading, spacing: 14) {
-          Text(L10n.text("Ölçüm ayrıntıları", "Measurement details")).font(.title2.bold())
-          if let value = model.snapshot {
-            Text(
-              L10n.text("Son ölçüm: ", "Last measurement: ")
-                + value.date.formatted(.dateTime.hour().minute().second().locale(L10n.locale))
-                + " · "
-                + (value.interval.map {
-                  String(format: "%.1f", locale: L10n.locale, $0)
-                    + L10n.text(" sn aralık", " sec interval")
-                } ?? L10n.text("Başlangıç örneği", "Baseline sample"))
-            )
-            .font(.caption).foregroundStyle(.secondary)
-          }
-
-          Text(
-            model.quality == .stale || model.quality == .failed
-              ? L10n.text(
-                "Güncel teşhis için ölçüm gerekli", "A current measurement is needed for diagnosis")
-              : model.snapshot.map { L10n.core($0.diagnosis) }
-                ?? L10n.text("İlk ölçüm bekleniyor", "Waiting for first measurement")
-          )
-          .font(.headline)
-          Text(
-            L10n.text(
-              "CPU, bellek baskısı ve swap izleniyor. Disk gecikmesi, GPU ve arayüz donmaları ölçülmüyor.",
-              "CPU, memory pressure, and swap are monitored. Disk latency, GPU usage, and UI freezes are not measured."
-            )
-          )
-          .font(.caption).foregroundStyle(.secondary)
-          Text(
-            L10n.text(
-              "\(model.snapshot?.unreadableCount ?? 0) süreç okunamadı. Bilinmeyen değerler sıfır sayılmaz; eksik ölçümler toplamlara dahil edilmez.",
-              "\(model.snapshot?.unreadableCount ?? 0) processes could not be read. Unknown values are not zero; missing measurements are excluded from totals."
-            )
-          )
-          .font(.caption)
-          if let error = model.scanError {
-            Text(L10n.core(error)).foregroundStyle(.red).textSelection(.enabled)
-          }
-          LabeledContent(
-            L10n.text("Swap’a giden", "Swap out"), value: Format.rate(model.snapshot?.paging?[1]))
-          LabeledContent(
-            L10n.text("Swap’tan gelen", "Swap in"),
-            value: Format.rate(model.snapshot?.paging?.first))
-
-          Text(
-            L10n.text(
-              "Fiziksel RAM: \(Format.bytes(ProcessInfo.processInfo.physicalMemory)) · Diskte swap: \(Format.bytes(model.snapshot?.swap))",
-              "Physical RAM: \(Format.bytes(ProcessInfo.processInfo.physicalMemory)) · Swap on disk: \(Format.bytes(model.snapshot?.swap))"
-            )
-          )
-          if let snapshot = model.snapshot {
-            LabeledContent(
-              L10n.text("Bellek baskısı kaynağı", "Memory pressure source"),
-              value:
-                snapshot.pressureSource == .kernelSnapshot
-                ? L10n.text("macOS anlık ölçümü", "macOS snapshot")
-                : snapshot.pressureSource == .dispatchEvent
-                  ? L10n.text("Son macOS basınç bildirimi", "Last macOS pressure event")
-                  : L10n.text("Bilinmiyor", "Unknown"))
-            DisclosureGroup(L10n.text("Çekirdek başına CPU", "CPU per logical core")) {
-              Text(
-                L10n.text(
-                  "Tek çekirdek yoğunken toplam CPU düşük görünebilir. Bu görünüm işin neden beklediğini tek başına kanıtlamaz.",
-                  "Total CPU can remain low while one core is busy. This alone does not prove why a task is waiting."
-                )
-              )
-              .font(.caption).foregroundStyle(.secondary)
-              ForEach(Array(snapshot.perCoreCPU.enumerated()), id: \.offset) { index, cpu in
-                LabeledContent(
-                  L10n.text("Çekirdek \(index + 1)", "Core \(index + 1)"), value: Format.cpu(cpu))
-              }
-            }
-          }
-          ForEach(model.snapshot?.system.memory ?? []) { part in
-            VStack(alignment: .leading, spacing: 4) {
-              LabeledContent(L10n.core(part.name), value: Format.bytes(part.bytes))
-              Text(L10n.core(part.explanation)).font(.caption).foregroundStyle(.secondary)
-            }
-          }
-          Divider()
-          Text(
-            L10n.text(
-              "Footprint, macOS’un sürece yazdığı bellek yüküdür; RSS yalnızca yerleşik kısmıdır. Uygulama toplamları footprint değerlerini toplar; fiziksel RAM toplamıyla bire bir eşleşmez.",
-              "Footprint is the memory load macOS attributes to a process; RSS is its resident portion. App totals sum footprints and do not match physical RAM exactly."
-            )
-          )
-          Text(
-            L10n.text(
-              "Swap hızı iki ölçüm arasındaki sayfa eşdeğeridir; SSD’nin fiziksel aktarım hızı değildir. Birikmiş swap miktarı tek başına mevcut yavaşlamayı göstermez.",
-              "Swap rate is a page-equivalent change between measurements, not the physical SSD transfer rate. Accumulated swap alone does not establish a current slowdown."
-            )
-          )
-          Text(
-            L10n.text(
-              "CPU sürekli yüksek: en az 15 saniye boyunca ardışık ölçümlerde toplam kapasitenin en az %85’i. Duraklama, uyku veya eksik örnek bu diziyi keser.",
-              "Sustained high CPU means at least 85% of total capacity across consecutive samples for at least 15 seconds. Pauses, sleep, and missing samples interrupt this sequence."
-            )
-          )
-          Text(
-            L10n.text(
-              "Grafik yalnızca bu oturumun son 30 dakikasını bellekte tutar. Duraklamalar ve eksik örnekler çizgide boşluktur. Proje bağlantısı sohbet sahipliği değildir.",
-              "Charts keep only this session’s last 30 minutes in memory. Pauses and missing samples leave gaps. A project connection does not establish chat ownership."
-            )
-          )
-          Text(BuildInfo.detail).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+          measurementHeader
+          diagnosisSummary
+          swapDetails
+          platformDetails
+          memoryBreakdown
+          explanations
         }.frame(maxWidth: .infinity, alignment: .leading)
       }
       HStack {
@@ -366,6 +266,129 @@ struct SystemDetails: View {
       }
     }.font(.callout).padding(24).frame(width: 620, height: 540)
   }
+  @ViewBuilder private var measurementHeader: some View {
+    Text(L10n.text("Ölçüm ayrıntıları", "Measurement details")).font(.title2.bold())
+    if let value = model.snapshot {
+      Text(
+        L10n.text("Son ölçüm: ", "Last measurement: ")
+          + value.date.formatted(.dateTime.hour().minute().second().locale(L10n.locale))
+          + " · "
+          + (value.interval.map {
+            String(format: "%.1f", locale: L10n.locale, $0)
+              + L10n.text(" sn aralık", " sec interval")
+          } ?? L10n.text("Başlangıç örneği", "Baseline sample"))
+      )
+      .font(.caption).foregroundStyle(.secondary)
+    }
+  }
+
+  @ViewBuilder private var diagnosisSummary: some View {
+    Text(
+      model.quality == .stale || model.quality == .failed
+        ? L10n.text(
+          "Güncel teşhis için ölçüm gerekli", "A current measurement is needed for diagnosis")
+        : model.snapshot.map { L10n.core($0.diagnosis) }
+          ?? L10n.text("İlk ölçüm bekleniyor", "Waiting for first measurement")
+    )
+    .font(.headline)
+    Text(
+      L10n.text(
+        "CPU, bellek baskısı ve swap izleniyor. Disk gecikmesi, GPU ve arayüz donmaları ölçülmüyor.",
+        "CPU, memory pressure, and swap are monitored. Disk latency, GPU usage, and UI freezes are not measured."
+      )
+    )
+    .font(.caption).foregroundStyle(.secondary)
+    Text(
+      L10n.text(
+        "\(model.snapshot?.unreadableCount ?? 0) süreç okunamadı. Bilinmeyen değerler sıfır sayılmaz; eksik ölçümler toplamlara dahil edilmez.",
+        "\(model.snapshot?.unreadableCount ?? 0) processes could not be read. Unknown values are not zero; missing measurements are excluded from totals."
+      )
+    )
+    .font(.caption)
+    if let error = model.scanError {
+      Text(L10n.core(error)).foregroundStyle(.red).textSelection(.enabled)
+    }
+  }
+
+  @ViewBuilder private var swapDetails: some View {
+    LabeledContent(
+      L10n.text("Swap’a giden", "Swap out"), value: Format.rate(model.snapshot?.paging?[1]))
+    LabeledContent(
+      L10n.text("Swap’tan gelen", "Swap in"),
+      value: Format.rate(model.snapshot?.paging?.first))
+
+    Text(
+      L10n.text(
+        "Fiziksel RAM: \(Format.bytes(ProcessInfo.processInfo.physicalMemory)) · Diskte swap: \(Format.bytes(model.snapshot?.swap))",
+        "Physical RAM: \(Format.bytes(ProcessInfo.processInfo.physicalMemory)) · Swap on disk: \(Format.bytes(model.snapshot?.swap))"
+      )
+    )
+  }
+
+  @ViewBuilder private var platformDetails: some View {
+    if let snapshot = model.snapshot {
+      LabeledContent(
+        L10n.text("Bellek baskısı kaynağı", "Memory pressure source"),
+        value:
+          snapshot.pressureSource == .kernelSnapshot
+          ? L10n.text("macOS anlık ölçümü", "macOS snapshot")
+          : snapshot.pressureSource == .dispatchEvent
+            ? L10n.text("Son macOS basınç bildirimi", "Last macOS pressure event")
+            : L10n.text("Bilinmiyor", "Unknown"))
+      DisclosureGroup(L10n.text("Çekirdek başına CPU", "CPU per logical core")) {
+        Text(
+          L10n.text(
+            "Tek çekirdek yoğunken toplam CPU düşük görünebilir. Bu görünüm işin neden beklediğini tek başına kanıtlamaz.",
+            "Total CPU can remain low while one core is busy. This alone does not prove why a task is waiting."
+          )
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        ForEach(Array(snapshot.perCoreCPU.enumerated()), id: \.offset) { index, cpu in
+          LabeledContent(
+            L10n.text("Çekirdek \(index + 1)", "Core \(index + 1)"), value: Format.cpu(cpu))
+        }
+      }
+    }
+  }
+
+  @ViewBuilder private var memoryBreakdown: some View {
+    ForEach(model.snapshot?.system.memory ?? []) { part in
+      VStack(alignment: .leading, spacing: 4) {
+        LabeledContent(L10n.core(part.name), value: Format.bytes(part.bytes))
+        Text(L10n.core(part.explanation)).font(.caption).foregroundStyle(.secondary)
+      }
+    }
+  }
+
+  @ViewBuilder private var explanations: some View {
+    Divider()
+    Text(
+      L10n.text(
+        "Footprint, macOS’un sürece yazdığı bellek yüküdür; RSS yalnızca yerleşik kısmıdır. Uygulama toplamları footprint değerlerini toplar; fiziksel RAM toplamıyla bire bir eşleşmez.",
+        "Footprint is the memory load macOS attributes to a process; RSS is its resident portion. App totals sum footprints and do not match physical RAM exactly."
+      )
+    )
+    Text(
+      L10n.text(
+        "Swap hızı iki ölçüm arasındaki sayfa eşdeğeridir; SSD’nin fiziksel aktarım hızı değildir. Birikmiş swap miktarı tek başına mevcut yavaşlamayı göstermez.",
+        "Swap rate is a page-equivalent change between measurements, not the physical SSD transfer rate. Accumulated swap alone does not establish a current slowdown."
+      )
+    )
+    Text(
+      L10n.text(
+        "CPU sürekli yüksek: en az 15 saniye boyunca ardışık ölçümlerde toplam kapasitenin en az %85’i. Duraklama, uyku veya eksik örnek bu diziyi keser.",
+        "Sustained high CPU means at least 85% of total capacity across consecutive samples for at least 15 seconds. Pauses, sleep, and missing samples interrupt this sequence."
+      )
+    )
+    Text(
+      L10n.text(
+        "Grafik yalnızca bu oturumun son 30 dakikasını bellekte tutar. Duraklamalar ve eksik örnekler çizgide boşluktur. Proje bağlantısı sohbet sahipliği değildir.",
+        "Charts keep only this session’s last 30 minutes in memory. Pauses and missing samples leave gaps. A project connection does not establish chat ownership."
+      )
+    )
+    Text(BuildInfo.detail).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+  }
+
 }
 struct EventStatus: View {
   let event: OperationEvent

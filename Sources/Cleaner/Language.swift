@@ -23,11 +23,11 @@ enum L10n {
       let title = String(name[separator.upperBound...])
       let translated = core(title)
       if translated != title {
-        return String(name[..<separator.upperBound]) + translated + value[pid.lowerBound...]
+        return String(name[..<separator.upperBound]) + translated + String(value[pid.lowerBound...])
       }
       start = separator.upperBound
     }
-    return core(name) + value[pid.lowerBound...]
+    return core(name) + String(value[pid.lowerBound...])
   }
 
   /// Pure translation boundary for the existing Turkish core, kept out of process decisions.
@@ -47,7 +47,7 @@ enum L10n {
       let start = value.index(value.startIndex, offsetBy: template.prefix.count)
       let end = value.index(value.endIndex, offsetBy: -template.suffix.count)
       guard start <= end else { continue }
-      return template.englishPrefix + value[start..<end] + template.englishSuffix
+      return template.englishPrefix + String(value[start..<end]) + template.englishSuffix
     }
     // Project evidence is assembled from a known source sentence and fixed suffixes.
     let evidenceSuffixes = [
