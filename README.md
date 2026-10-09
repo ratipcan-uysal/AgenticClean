@@ -1,0 +1,70 @@
+# AgenticClean
+
+> **Kaynak kodu alpha — v0.7.0-alpha.1.** Bu sürüm geliştiriciler ve erken test kullanıcıları içindir. Hazır, Apple tarafından notarize edilmiş bir indirme sunulmaz; kaynak koddan derleme gerekir. Genel kullanıma hazır veya bütün Mac’lerde doğrulanmış bir ürün değildir.
+>
+> **Destek:** macOS kaynak izleme, kanıta dayalı proje bağlantıları, onaylı manuel durdurma, yerel AI servislerini inceleme ve doğrulanmış Xcode Build çıktıları için Çöp Sepeti akışı.
+>
+> **Sınırlar:** Proje bağlantısı sohbet sahipliği değildir. GPU ve disk gecikmesi ölçülmez; kimlik doğrulamalı model API’leri ve llama.cpp router model çıkarma desteklenmez. Bağımsız Mac kurulumu, VoiceOver ve hedef kullanıcı çalışması bekliyor. [Alpha durumu](docs/ALPHA.md).
+
+Mac’inde çalışan işleri gör: bağımsız yerel AI sunucuları, geliştirme ortamları, uygulamalar ve projeler. CPU ve bellek kullanımını incele; etkisini gözden geçirerek durdur veya doğrulanmış derleme çıktılarını Çöp Kutusu’na taşı.
+
+Ücretsiz, açık kaynak, yerel macOS menü çubuğu uygulaması. [English](README.en.md) · [MIT lisansı](LICENSE)
+
+## Kullanım
+
+1. **Tara:** CPU, bellek baskısı ve uygulama listesini güncelle.
+2. **İncele:** Genel Bakış’tan çalışan işi seç; Projeler sekmesinde tam klasör yoluyla bağlantıları incele. Bağımsız AI sunucuları uygulama ağacını açmadan görünür. Node/Java adı tek başına görevi kanıtlamaz.
+3. **Onayla:** Projenin **Durdur…** düğmesi kapatılacak ve açık kalacak süreçleri nedenleriyle gösterir. AI oturumu listedeyse devam eden iş kesilir. Paylaşılan veya bağlantısı bilinmeyen süreçler dahil edilmez.
+4. **Sonucu gör:** Kapandı, hâlâ çalışıyor, doğrulanamadı ve başarısız sonuçları ayrı gösterilir. Yeni eşleşen süreçler ve okunabilen önce/sonra bellek değerleri ayrıca sunulur; otomatik hızlanma iddiası yapılmaz.
+
+**Disk alanı:** Şu an yalnızca Xcode’un işaretçisi ve proje bağlantısı doğrulanmış `DerivedData/<proje>/Build` çıktıları desteklenir. Boyut, yol ve yeniden derleme etkisini inceleyip seç; ikinci onaydan sonra Çöp Sepeti’ne taşınır. **Çöp Sepeti boşaltılana kadar disk alanı tamamen geri kazanılmaz.** AgenticClean Çöp Sepeti’ni boşaltmaz. [Tam kapsam ve korumalar](docs/CACHE-SCOPE.md).
+
+Codex, Claude Code ve Cursor için süreç/proje inceleme desteklenir; bu araçların sohbet, ayar, kimlik bilgisi veya doğrulanmamış önbellek klasörleri temizlenmez. SwiftPM `.build` içindeki değişmiş bağımlılık kaynakları da temizlik kapsamına alınmaz.
+
+**Simülatörler:** Xcode yüklüyse açık cihazları listele, seçili cihazın kapatılmasını onayla. Ortak simülatör servislerine topluca sinyal gönderilmez.
+
+**Grafikler:** Genel Bakış’ta CPU ve bellek baskısının küçük grafikleri bulunur. Ayrıntılı sistem geçmişi ve uygulama/proje geçmişi ayrı açılır. Ana ekran küçük pencerede listeye öncelik verir. Uygulama/proje geçmişi son 30 dakikayı, en az 15 saniye aralıkla CPU ve bellekte ilk 20 grubu tutar. Kısmi kullanım kesikli çizgidir; toplam daha yüksek olabilir. Hiç ölçülmeyen veya tutulmayan değerler grafikte boşluktur, sıfır değildir. Geçmiş yalnızca bellekte, mevcut oturum boyunca kalır.
+
+## Yerel servisler
+
+- **Ollama / LM Studio:** Seçilen süreçte doğrulanmış loopback dinleyicisinden, açık istek üzerine model envanteri okunur. Model bellekten çıkarma ayrı onay ister; dosyaları silmez ve başka istemcileri etkileyebilir. Bellekte bulunma, aktif üretim veya proje sahipliği kanıtı değildir.
+- **llama.cpp:** Bağımsız sunucu görünür. Desteklenen `/slots` API’si anlık etkin istek sayısı sağlar; router model çıkarma bu sürümde desteklenmez.
+- **Docker:** Resmî Docker Desktop kurulumu ve standart kullanıcı soketi desteklenir. Konteyner/proje/servis bilgileri açık istekte okunur; yalnızca onaylanan tam konteyner kimliğine SIGTERM gönderilir. Otomatik SIGKILL, volume silme veya prune yoktur.
+- **Yerel bağlantılar:** Geliştirme sürecinin loopback TCP portlarını inceleyebilirsin. Portun bulunması HTTP desteğini veya proje sahipliğini kanıtlamaz; tarayıcıda açma kullanıcı eylemidir.
+
+API erişim anahtarları, wildcard/harici dinleyiciler ve özel Docker konumları desteklenmez. Bilinmeyen sürüm/yanıt veri yokmuş gibi gösterilmez. Sağlayıcının bellek değeri süreç footprint’ine eklenmez. Sağlayıcı yanıtlarından yalnızca seçili metadata tutulur; yanıt gövdesi ve sohbet içeriği kaydedilmez.
+
+## Açma ve tercihler
+
+Derleyip yerel kurulum yaptıktan sonra `dist/AgenticClean.app` dosyasını aç. Bu çalışma klasöründeki `AgenticClean Aç.command` yalnızca yerel kısayoldur; herkese açık kaynak arşivine dahil değildir. Paneli kapatmak ölçümü durdurmaz; menü çubuğundaki AgenticClean’den tekrar aç. Tam çıkış için **AgenticClean’den çık**. Ana ekranın altındaki **Ayarlar → Language / Dil** alanından **Türkçe** veya **English** seçilebilir. Değişiklik anında uygulanır; aynı ekranda tarama aralığı da seçilebilir. Dil, tarama aralığı, sıralama ve grafik tercihi korunur; PID/seçim geri yüklenmez.
+
+Liste klavye odaktayken ok tuşlarıyla gezin, sağ/sol ile genişlet/daralt, Enter veya boşlukla dalı aç. Süreç seçilince ayrıntı sağda görünür. Arama/filtre görünür sonuçlardan çıkardığı sürecin işlem seçimini temizler.
+
+## Ölçümler ve sınırlar
+
+- Ana listedeki CPU yüzdesi **tüm işlemci kapasitesine** göredir; sayı ve çubuk aynı ölçeği kullanır. Teknik süreç ayrıntısı bir çekirdek %100 esasını ayrıca belirtir.
+- Bellek **footprint** değeridir. Okunamayan footprint yerine RSS geçirilmez; eksik süreç sayısı belirtilir. RSS teknik ayrıntıda ayrıdır. Bellek çubuğu fiziksel RAM’e göre sabittir; arama ölçeği değiştirmez. Footprint toplamı fiziksel RAM dağılımına bire bir eşit değildir.
+- Bellek baskısı macOS seviyesidir. Swap hızı iki sayaç arasındaki gerçek süreyle hesaplanır. İlk örnek, uyku/duraklama sonrası başlangıç ve eksik ölçüm bilinmiyor olarak kalır.
+- CPU toplam kapasitenin en az %85’inde 15 saniye kalırsa yüksek kullanım bildirilir. Eski veya düşük CPU’lu süreç “gereksiz” sayılmaz.
+- Süreç disk okuma/yazma hızı, çekirdek başına CPU, macOS termal seviyesi ve Düşük Güç Modu gösterilir. Disk aktarım hızı disk gecikmesi değildir; termal seviye derece veya kesin hız kaybı değildir. Genel GPU kullanımı, disk gecikmesi ve arayüz donması ölçülmez. “Bu ölçümler nedeni açıklamıyor” geçerli bir sonuçtur.
+- Çalışma klasörü proje bağlantısı için kanıttır; sohbet sahipliğini kanıtlamaz. Aynı adlı farklı yollar ve Git worktree’leri ayrı kalır.
+- Durdurma yalnızca SIGTERM kullanır. Sinyal gönderilen her süreç, kapanışı doğrulanana veya yaklaşık 15 saniyelik bekleme sınırına ulaşılana kadar kontrol edilir; ön kontroller, sinyal gönderimi ve işletim sistemi yanıtları nedeniyle tüm işlemin süresi daha uzun olabilir. AI oturumu için doğrudan işaretçili proje ve tüm okunabilir alt süreçlerin aynı projeye bağlı olması gerekir. Kullanıcı süreçleri eksik okunursa oturum kapatma engellenir. Sinyal öncesi yeni tarama yapılır; son kontrol ile işletim sistemi sinyali atomik değildir.
+- Sistem, başka kullanıcı, masaüstü uygulama ana süreçleri ve paylaşılan yardımcılar korunur. Otomatik veya zorla süreç temizliği yoktur.
+
+Sunucu, telemetri, sohbet veritabanı okuması veya yönetici yetkisi isteyen yardımcı servis yoktur. Dosya temizliği açıkça seçilip onaylanır. Harici hata mesajları geldiği dilde kalabilir. [Güvenlik](SECURITY.md)
+
+## Derleme ve geri dönüş
+
+macOS 14+; Xcode ve Swift 6.2+:
+
+```sh
+swift test --jobs 2
+./scripts/build.sh
+open "$(cat dist/latest-candidate.txt)"
+```
+
+Bu **yerel ad hoc imzalı adaydır**, Apple tarafından notarize edilmiş genel dağıtım değildir. Adayı doğruladıktan sonra AgenticClean’den çıkıp `./scripts/install.sh` ve `open dist/AgenticClean.app` kullan. Kurulum eski sürümü `dist/releases/previous-<zaman>.app` olarak saklar. Geri dönüş: AgenticClean’den çık, `./scripts/install.sh <eski/AgenticClean.app>` çalıştır.
+
+İmzalı GitHub dağıtımı, kaynak arşivi, mimari desteği ve ikinci Mac kontrolü: [Yayın adımları](docs/RELEASING.md). [Değişiklikler](CHANGELOG.md). Yerel performans ölçümü: pencere kapalıyken `python3 scripts/profile.py --pid <AgenticClean-PID> --duration 600 --output /tmp/cleaner-profile.json`.
+
+CLI tanıma, adı/yerel kurulumu doğrulanan Codex ve Claude yürütülebilirlerini kapsar; Claude’un sürümlü yerel kurulumu dahildir. Node/npm üzerinden çalışan ve kimliği doğrulanamayan sarmalayıcılar Node.js olarak görünebilir; tahminle AI oturumu kapatma izni verilmez.

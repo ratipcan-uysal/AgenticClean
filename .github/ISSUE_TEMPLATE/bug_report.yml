@@ -1,0 +1,28 @@
+name: Bug report / Hata bildirimi
+description: Report a reproducible problem without sharing private process or project data.
+body:
+  - type: input
+    id: version
+    attributes:
+      label: AgenticClean version and build ID
+      description: Shown in the app footer and measurement details.
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: macOS version and Mac chip (Apple Silicon / Intel)
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps, expected behavior, actual behavior
+      description: Replace personal folder names, usernames and project names with examples. Do not attach chat history, credentials or full command lines.
+    validations:
+      required: true
+  - type: textarea
+    id: errors
+    attributes:
+      label: Error shown by AgenticClean
+      description: Optional. Redact private paths before sharing screenshots.

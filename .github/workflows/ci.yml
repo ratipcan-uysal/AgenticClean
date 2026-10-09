@@ -1,0 +1,34 @@
+name: macOS source checks
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: source-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test-and-build:
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Full test suite (test-owned fixtures only)
+        run: swift test --jobs 2
+      - name: Build and verify local candidate
+        run: ./scripts/build.sh
+      - name: Curated source archive
+        run: python3 scripts/public_source.py
+      - name: Whitespace validation
+        run: git diff --check
