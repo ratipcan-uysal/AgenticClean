@@ -208,7 +208,7 @@ struct HistoryView: View {
             "Last 30 minutes macOS memory pressure; missing samples leave gaps"))
       }
       VStack(alignment: .leading, spacing: 4) {
-        Text(L10n.text("Swap · MiB/sn   ↓ gelen / ↑ giden", "Swap · MiB/sec   ↓ in / ↑ out")).font(
+        Text(L10n.text("Swap · MiB/sn   ┄ ↓ gelen / — ↑ giden", "Swap · MiB/sec   ┄ ↓ in / — ↑ out")).font(
           .caption.weight(.medium))
         Chart(points) { point in
           if let value = point.swapIn {
@@ -218,6 +218,7 @@ struct HistoryView: View {
               series: .value(L10n.text("Kesit", "Segment"), "in-\(point.segment)")
             ).foregroundStyle(
               by: .value(L10n.text("Yön", "Direction"), L10n.text("↓ gelen", "↓ in")))
+              .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
           }
           if let value = point.swapOut {
             LineMark(
@@ -239,8 +240,8 @@ struct HistoryView: View {
         }
         .chartXScale(domain: domain).frame(height: 64).accessibilityLabel(
           L10n.text(
-            "Son 30 dakika swap, mavi diskten gelen, mor diske giden; MiB saniye",
-            "Last 30 minutes swap: blue from disk, purple to disk; MiB per second"))
+            "Son 30 dakika swap, kesikli diskten gelen, düz diske giden; MiB saniye",
+            "Last 30 minutes swap: dashed from disk, solid to disk; MiB per second"))
       }
     }.padding(.top, 8)
   }

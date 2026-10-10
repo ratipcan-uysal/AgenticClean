@@ -69,6 +69,9 @@ struct ProjectStopView: View {
             VStack(alignment: .leading, spacing: 4) {
               Text("\(L10n.core(entry.row.title)) · PID \(entry.id.pid)").font(
                 .callout.weight(.medium))
+              if entry.exclusion == nil {
+                Text(L10n.core(entry.row.stopImpact)).font(.caption).foregroundStyle(.secondary)
+              }
               if let exclusion = entry.exclusion {
                 Label(
                   L10n.text("Açık kalacak: ", "Excluded: ") + L10n.core(exclusion),

@@ -11,7 +11,7 @@ struct ListenerInspector: View {
   var body: some View {
     if row.sample.isDevelopment {
       VStack(alignment: .leading, spacing: 8) {
-        Button(L10n.text("Yerel bağlantıları incele", "Inspect local connections")) {
+        Button(L10n.text("Bu işin kullandığı portları bul", "Find ports used by this work")) {
           Task {
             busy = true
             defer { busy = false }
@@ -38,7 +38,10 @@ struct ListenerInspector: View {
         ForEach(listeners) { listener in
           if let url = listener.url {
             HStack {
-              Text(url.absoluteString).font(.caption).textSelection(.enabled)
+              VStack(alignment: .leading, spacing: 3) {
+                Text(L10n.text("Port \(listener.port) bu süreç tarafından kullanılıyor", "Port \(listener.port) is used by this process")).font(.caption.weight(.medium))
+                Text(url.absoluteString).font(.caption).textSelection(.enabled)
+              }
               Button(L10n.text("Tarayıcıda aç", "Open in browser")) {
                 Task {
                   guard await stillValid(listener) else {

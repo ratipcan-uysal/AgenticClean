@@ -282,3 +282,49 @@ public struct SamplingSchedule: Equatable, Sendable {
   }
   public mutating func wake() { epoch &+= 1 }
 }
+
+/// Observed intervals only: never bridge pauses, missing readings, or sampling segments.
+public struct PressureTimeline: Sendable {
+  public struct Interval: Sendable {
+    public let start: Date
+    public let end: Date
+    public let level: Int
+  }
+  public let intervals: [Interval]
+  public let currentDuration: TimeInterval?
+  public let hasMissingReadings: Bool
+
+  public init(points: [HistoryPoint]) {
+    var result: [Interval] = []
+    for (previous, next) in zip(points, points.dropFirst()) {
+      guard previous.segment == next.segment, next.date > previous.date,
+        let level = previous.pressure, [1, 2, 4].contains(level),
+        let nextLevel = next.pressure, [1, 2, 4].contains(nextLevel)
+      else { continue }
+      result.append(Interval(start: previous.date, end: next.date, level: Int(level)))
+    }
+    intervals = result
+    // The sampler inserts a reset marker before its first reading. That is startup,
+    // not an interruption in an already observed history.
+    let observed = points.drop { point in
+      guard let pressure = point.pressure else { return true }
+      return ![1, 2, 4].contains(pressure)
+    }
+    hasMissingReadings = observed.contains { point in
+      guard let pressure = point.pressure else { return true }
+      return ![1, 2, 4].contains(pressure)
+    } || zip(observed, observed.dropFirst()).contains { previous, next in
+      previous.segment != next.segment || next.date <= previous.date
+    }
+    guard let last = points.last, let level = last.pressure, [1, 2, 4].contains(level) else {
+      currentDuration = nil
+      return
+    }
+    var start = last.date
+    for interval in result.reversed() {
+      guard interval.end == start, interval.level == Int(level) else { break }
+      start = interval.start
+    }
+    currentDuration = last.date.timeIntervalSince(start)
+  }
+}

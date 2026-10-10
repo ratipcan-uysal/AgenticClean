@@ -19,12 +19,21 @@ fi
 build_id="${revision}-$(date -u +%Y%m%dT%H%M%SZ)"
 release="$PWD/dist/releases/${version}-${build_id}"
 app="$release/AgenticClean.app"
-mkdir -p "$app/Contents/MacOS"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+# Produce all standard macOS icon representations from the approved source artwork.
+iconset="$release/AgenticClean.iconset"
+mkdir -p "$iconset"
+for size in 16 32 128 256 512; do
+  sips -z "$size" "$size" Assets/AgenticClean-icon.png --out "$iconset/icon_${size}x${size}.png" >/dev/null
+  retina=$((size * 2))
+  sips -z "$retina" "$retina" Assets/AgenticClean-icon.png --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+done
+iconutil -c icns "$iconset" -o "$app/Contents/Resources/AgenticClean.icns"
 cp "$binary_dir/Cleaner" "$app/Contents/MacOS/Cleaner"
 python3 - "$app/Contents/Info.plist" "$version" "$build_id" <<'PY'
 import plistlib,sys
 value=dict(CFBundleExecutable='Cleaner',CFBundleIdentifier='local.cleaner.monitor',CFBundleName='AgenticClean',CFBundleDisplayName='AgenticClean',
-           CFBundlePackageType='APPL',CFBundleShortVersionString=sys.argv[2],CFBundleVersion='2',
+           CFBundleIconFile='AgenticClean',CFBundlePackageType='APPL',CFBundleShortVersionString=sys.argv[2],CFBundleVersion='2',
            CleanerBuildID=sys.argv[3],LSMinimumSystemVersion='14.0',LSUIElement=True,NSHighResolutionCapable=True)
 with open(sys.argv[1],'wb') as output: plistlib.dump(value,output)
 PY

@@ -22,12 +22,24 @@ struct DashboardView: View {
   @AppStorage("cleanerLanguage") private var language = "tr"
 
   var body: some View {
+    GeometryReader { geometry in
     VStack(spacing: 0) {
       SystemHeader(model: model, showSystem: { sheet = .system }, compact: true)
       Divider()
       actionBar.padding(.horizontal, 16).padding(.top, 12)
       if section != "disk" {
-        ResourceVisuals(model: model).padding(.horizontal, 16).padding(.top, 8)
+        if geometry.size.height >= 780 {
+          ResourceVisuals(model: model, showMemoryConsumers: showMemoryConsumers)
+            .padding(.horizontal, 16).padding(.top, 8)
+        } else {
+          HStack {
+            Text(L10n.text("Listeye daha fazla alan ayrıldı", "More room for your running work"))
+              .font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            Button(L10n.text("Bellek kullananları göster", "Show memory consumers"), action: showMemoryConsumers)
+            Button(L10n.text("Grafikleri aç", "Open charts")) { sheet = .history }
+          }.padding(.horizontal, 16).padding(.top, 10)
+        }
       }
       if section != "disk" { controls.padding(16) }
       Divider()
@@ -50,6 +62,7 @@ struct DashboardView: View {
       }.frame(maxHeight: .infinity)
       Divider()
       footer
+    }
     }
     .environment(\.locale, Locale(identifier: language))
     .frame(
@@ -107,6 +120,23 @@ struct DashboardView: View {
     case .cleanup: CacheCleanupView()
     case .docker: DockerInspector(model: model)
     case .groupHistory: GroupHistoryView(model: model)
+    case .episodes: PressureEpisodesView(model: model)
+    case .workReview:
+      WorkReviewView(model: model, inspectProject: { path in
+        sheet = nil
+        section = "projects"
+        model.request.query = ""
+        model.request.filter = .all
+        model.request.project = path
+        model.request.mode = .projects
+      }, inspectProcess: { row in
+        sheet = nil
+        section = "overview"
+        model.request.project = "all"
+        model.request.filter = .all
+        model.request.query = String(row.id.pid)
+        model.request.mode = .applications
+      }, showSimulators: { sheet = .simulators })
     case .operations: OperationsView(model: model)
     case .simulators: SimulatorsView(model: model)
     case .system: SystemDetails(model: model)
@@ -121,7 +151,7 @@ struct DashboardView: View {
             "This session only · missing measurements and pauses leave gaps.")
         )
         .font(.caption).foregroundStyle(.secondary)
-        ResourceVisuals(model: model)
+        ResourceVisuals(model: model, showMemoryConsumers: showMemoryConsumers)
         Divider()
         Text(L10n.text("Son 30 dakika", "Last 30 minutes")).font(.headline)
         HistoryView(points: model.history.points)
@@ -165,6 +195,15 @@ struct DashboardView: View {
         Label(L10n.text("Simülatörler", "Simulators"), systemImage: "iphone")
       }
     }.controlSize(.regular)
+  }
+  private func showMemoryConsumers() {
+    sheet = nil
+    section = "overview"
+    model.request.mode = .applications
+    model.request.sort = .memory
+    model.request.query = ""
+    model.request.filter = .all
+    model.request.project = "all"
   }
   private var controls: some View {
     HStack(spacing: 16) {
@@ -219,6 +258,9 @@ struct DashboardView: View {
         sheet = .history
       }.buttonStyle(.borderless)
       Menu {
+        Button(L10n.text("İş sonrası kontrol", "After-work review")) { sheet = .workReview }
+        Button(L10n.text("Yavaşlama anlarını incele", "Review pressure periods")) { sheet = .episodes }
+        Divider()
         Button(L10n.text("Uygulama / proje geçmişi", "App / project history")) {
           sheet = .groupHistory
         }
@@ -261,9 +303,23 @@ struct DashboardView: View {
               model.scanning
                 ? L10n.text("Ölçüm alınıyor", "Taking measurements")
                 : L10n.text("Sonuç bulunamadı", "No results"),
-              systemImage: "magnifyingglass")
+              systemImage: "magnifyingglass",
+              description: model.scanning ? nil : Text(
+                model.request.query.isEmpty
+                  ? L10n.text(
+                    section == "projects" ? "Henüz gösterilecek proje veya süreç yok. Yeniden tarayabilirsin."
+                      : "Henüz gösterilecek çalışan iş yok. Yeniden tarayabilirsin.",
+                    section == "projects" ? "No projects or processes to show yet. Try scanning again."
+                      : "No running work to show yet. Try scanning again.")
+                  : L10n.text(
+                    "“\(model.request.query)” aramasıyla eşleşen süreç bulunamadı. Tüm süreçleri görmek için aramayı temizle.",
+                    "No processes match “\(model.request.query)”. Clear the search to see all processes.")
+              ))
             if !model.request.query.isEmpty {
               Button(L10n.text("Aramayı temizle", "Clear search")) { model.request.query = "" }
+            } else {
+              Button(L10n.text("Yeniden tara", "Scan again")) { Task { await model.refresh() } }
+                .disabled(model.scanning)
             }
           }.frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -574,6 +630,7 @@ struct DashboardView: View {
     return model.presentation.workloads.first { $0.id == key }?.group
   }
   private func groupInspector(_ group: ResourceGroup) -> some View {
+    ScrollView {
     VStack(alignment: .leading, spacing: 16) {
       HStack {
         Text(groupTitle(group)).font(.title2.bold()).textSelection(.enabled)
@@ -619,8 +676,8 @@ struct DashboardView: View {
         )
         .font(.callout).foregroundStyle(.secondary)
       }
-      Spacer()
-    }.padding(20).frame(maxHeight: .infinity, alignment: .top).background(.background)
+    }.padding(20).frame(maxWidth: .infinity, alignment: .topLeading)
+    }.frame(maxHeight: .infinity, alignment: .top).background(.background)
   }
   private var inspector: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -644,7 +701,7 @@ struct DashboardView: View {
             if !model.presentation.rows.contains(where: { $0.id == row.id }) {
               Label(presenceText, systemImage: "info.circle").foregroundStyle(.orange)
             }
-            Text(L10n.core(row.explanation)).font(.callout)
+            WorkExplanationView(row: row)
             if LocalAIProvider.recognize(executablePath: row.sample.path) != nil {
               ProviderInspector(row: row, model: model).id(row.id)
             }
@@ -792,10 +849,12 @@ enum BuildInfo {
 }
 
 private enum DashboardSheet: Identifiable {
-  case cleanup, groupHistory, operations, simulators, history, system, settings, docker
+  case cleanup, groupHistory, operations, simulators, history, system, settings, docker, episodes, workReview
   case project(ProjectStopPlan)
   var title: String {
     switch self {
+    case .episodes: L10n.text("AgenticClean — Yavaşlama geçmişi", "AgenticClean — Pressure periods")
+    case .workReview: L10n.text("AgenticClean — İş sonrası kontrol", "AgenticClean — After-work review")
     case .cleanup: L10n.text("AgenticClean — Disk alanı", "AgenticClean — Disk space")
     case .docker: "AgenticClean — Docker"
     case .groupHistory: L10n.text("AgenticClean — Proje geçmişi", "AgenticClean — Project history")
@@ -809,6 +868,8 @@ private enum DashboardSheet: Identifiable {
   }
   var id: String {
     switch self {
+    case .episodes: "episodes"
+    case .workReview: "work-review"
     case .cleanup: "cleanup"
     case .docker: "docker"
     case .groupHistory: "group-history"

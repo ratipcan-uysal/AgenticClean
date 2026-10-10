@@ -1,4 +1,4 @@
-# AgenticClean v0.7.0-alpha.1
+# AgenticClean v0.7.1-alpha.1
 
 Early access, macOS only. MIT licensed. The release includes an Apple Silicon ZIP signed with Developer ID and notarized by Apple.
 
@@ -14,7 +14,7 @@ Early access, macOS only. MIT licensed. The release includes an Apple Silicon ZI
 
 ## Validation and limits
 
-On 2026-10-09, all 123 tests passed in a clean source-export checkout on the local Apple Silicon development Mac (17.057 seconds test execution, excluding compilation). This does not substitute for hardware or usability validation.
+On 2026-10-10, all 129 tests passed in the public source checkout on the local Apple Silicon development Mac (17.089 seconds test execution, excluding compilation). The suite includes memory-pressure timeline and work-explanation/episode regression coverage. This does not substitute for hardware or usability validation.
 
 Local development checks cover process identity reuse, missing counters, bounded test-helper timeouts, listener identity, project boundaries and disposable Trash restoration. CI runs the full suite and builds an ad-hoc signed candidate on macOS. Check the actual Actions result for the release commit; a workflow file alone is not evidence of success.
 
@@ -24,6 +24,6 @@ Authentication-required model APIs, custom Docker installations, wildcard provid
 
 ## Binary alpha verification
 
-On 2026-10-09, the arm64 build of commit `6ab4f93` was signed with Developer ID, accepted by Apple notarization, and stapled. The final ZIP was extracted locally; signature verification, staple validation, Gatekeeper assessment and SHA256 verification passed. These checks were on the development Mac, not a second machine.
+For the previous v0.7.0-alpha.1 release, on 2026-10-09 the arm64 build of commit `6ab4f93` was signed with Developer ID, accepted by Apple notarization, and stapled. The final ZIP was extracted locally; signature verification, staple validation, Gatekeeper assessment and SHA256 verification passed. These checks were on the development Mac, not a second machine.
 
 Before general availability, validate browser download and installation on another physical Mac and observe target-user tasks. Intel and minimum-OS compatibility are not verified. Do not disable macOS security protections.

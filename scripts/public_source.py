@@ -7,7 +7,7 @@ import tarfile
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 FILES = ["Package.swift", "VERSION", "LICENSE", "README.md", "README.en.md", "SECURITY.md",
          ".gitignore", "CONTRIBUTING.md", "docs/ALPHA.md", "docs/RELEASING.md", "docs/CACHE-SCOPE.md", "CHANGELOG.md"]
-TREES = ["Sources", "Tests", "scripts", ".github"]
+TREES = ["Sources", "Tests", "scripts", ".github", "Assets"]
 
 def main():
     selected = [ROOT / name for name in FILES if (ROOT / name).is_file()]
