@@ -106,24 +106,32 @@ private actor FakeSource: SnapshotSource {
 @Test @MainActor func cadencePauseResumeAndWakeRestartSamplingImmediately() async throws {
   let source = FakeSource()
   let model = dashboard(source)
+  // Await observable sampling milestones; CI scheduling is not a 100 ms contract.
+  func waitUntil(_ condition: () async -> Bool) async throws {
+    let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+    while !(await condition()), ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(20))
+    }
+  }
   model.start()
-  try await Task.sleep(for: .milliseconds(1100))
+  defer { model.stopMonitoring() }
+  try await waitUntil { await source.captures >= 2 }
   let before = await source.captures
   #expect(before >= 2)
   model.interval = 300
-  try await Task.sleep(for: .milliseconds(100))
+  try await waitUntil { await source.captures > before }
   #expect(await source.captures > before)
   model.paused = true
   let paused = await source.captures
   try await Task.sleep(for: .milliseconds(100))
   #expect(await source.captures == paused)
   model.paused = false
-  try await Task.sleep(for: .milliseconds(100))
+  try await waitUntil { await source.resets >= 3 }
   let resumed = await source.resets
   #expect(resumed >= 3)
   model.sleep()
   model.wake()
-  try await Task.sleep(for: .milliseconds(100))
+  try await waitUntil { await source.resets > resumed }
   #expect(await source.resets > resumed)
   model.stopMonitoring()
 }
