@@ -1,6 +1,6 @@
 # AgenticClean
 
-> **Alpha kaynak sürümü — 0.7.2.** Yeni ZIP hazırlanıyor; şu an indirme bağlantısı önceki doğrulanmış 0.7.1 sürümüne gider. Erken test kullanıcıları için Apple Silicon (M serisi) ZIP indirmesi mevcuttur; Developer ID ile imzalanmış ve Apple tarafından notarize edilmiştir. Genel kullanıma hazır veya bütün Mac’lerde doğrulanmış bir ürün değildir.
+> **Alpha — v0.7.2-alpha.1.** Erken test kullanıcıları için Apple Silicon (M serisi) ZIP indirmesi mevcuttur; Developer ID ile imzalanmış ve Apple tarafından notarize edilmiştir. Genel kullanıma hazır veya bütün Mac’lerde doğrulanmış bir ürün değildir.
 >
 > **Destek:** macOS kaynak izleme, kanıta dayalı proje bağlantıları, onaylı manuel durdurma, yerel AI servislerini inceleme ve proje disk ölçümü ve doğrulanmış Xcode/Next.js/Vite çıktıları için Çöp Sepeti akışı.
 >
@@ -12,7 +12,7 @@ Mac’inde çalışan işleri gör: bağımsız yerel AI sunucuları, geliştirm
 
 ## İndir ve kur
 
-[Alpha indirme sayfasından](https://github.com/ratipcan-uysal/AgenticClean/releases/tag/v0.7.1-alpha.1) `AgenticClean-0.7.1-arm64.zip` dosyasını indir, ZIP’i aç ve `AgenticClean.app` dosyasını Uygulamalar klasörüne taşı. Uygulamayı aç; menü çubuğundan erişebilirsin. macOS 14+ hedeflenir; Intel paketi sunulmaz. İkinci fiziksel Mac üzerinde kurulum doğrulaması henüz yapılmadı. `.cmd` veya terminal betiği gerekmez.
+[Alpha indirme sayfasından](https://github.com/ratipcan-uysal/AgenticClean/releases/tag/v0.7.2-alpha.1) `AgenticClean-0.7.2-arm64.zip` dosyasını indir, ZIP’i aç ve `AgenticClean.app` dosyasını Uygulamalar klasörüne taşı. Uygulamayı aç; menü çubuğundan erişebilirsin. macOS 14+ hedeflenir; Intel paketi sunulmaz. İkinci fiziksel Mac üzerinde kurulum doğrulaması henüz yapılmadı. `.cmd` veya terminal betiği gerekmez.
 
 ## Kullanım
 

@@ -1,6 +1,6 @@
 # AgenticClean
 
-> **Alpha source version — 0.7.2.** The new ZIP is being prepared; the current download link points to the previous verified 0.7.1 release. An Apple Silicon (M-series) ZIP is available for early testers, signed with Developer ID and notarized by Apple. This is not a general-availability release or a claim of compatibility with every Mac.
+> **Alpha — v0.7.2-alpha.1.** An Apple Silicon (M-series) ZIP is available for early testers, signed with Developer ID and notarized by Apple. This is not a general-availability release or a claim of compatibility with every Mac.
 >
 > **Supported:** macOS resource monitoring, evidence-based project links, reviewed manual stopping, local AI service inspection, and project disk measurement and Trash-only cleanup of verified Xcode/Next.js/Vite outputs.
 >
@@ -12,7 +12,7 @@ Free, open-source, native macOS menu bar app. [Türkçe](README.md) · [MIT lice
 
 ## Download and install
 
-Download `AgenticClean-0.7.1-arm64.zip` from the [alpha release](https://github.com/ratipcan-uysal/AgenticClean/releases/tag/v0.7.1-alpha.1), unzip it, and move `AgenticClean.app` to Applications. Open it and use its menu bar item. Targets macOS 14+; no Intel binary is provided. Installation on a second physical Mac has not yet been validated. No terminal script is required.
+Download `AgenticClean-0.7.2-arm64.zip` from the [alpha release](https://github.com/ratipcan-uysal/AgenticClean/releases/tag/v0.7.2-alpha.1), unzip it, and move `AgenticClean.app` to Applications. Open it and use its menu bar item. Targets macOS 14+; no Intel binary is provided. Installation on a second physical Mac has not yet been validated. No terminal script is required.
 
 ## Scan → review → confirm → see results
 

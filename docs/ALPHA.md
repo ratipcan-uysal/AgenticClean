@@ -1,6 +1,6 @@
 # AgenticClean v0.7.2-alpha.1
 
-Early access, macOS only. MIT licensed. The previous 0.7.1 release provides an Apple Silicon ZIP signed with Developer ID and notarized by Apple. The 0.7.2 source update is published; its binary release is still being prepared.
+Early access, macOS only. MIT licensed. The release includes an Apple Silicon ZIP signed with Developer ID and notarized by Apple.
 
 ## What is included
 
@@ -28,3 +28,5 @@ Authentication-required model APIs, custom Docker installations, wildcard provid
 For the previous v0.7.0-alpha.1 release, on 2026-10-09 the arm64 build of commit `6ab4f93` was signed with Developer ID, accepted by Apple notarization, and stapled. The final ZIP was extracted locally; signature verification, staple validation, Gatekeeper assessment and SHA256 verification passed. These checks were on the development Mac, not a second machine.
 
 Before general availability, validate browser download and installation on another physical Mac and observe target-user tasks. Intel and minimum-OS compatibility are not verified. Do not disable macOS security protections.
+
+For v0.7.2-alpha.1, the app was built from `6b094a532ac885922ab088a838f867ae2c5ad159` and Apple notarization accepted submission `a2352814-040a-4b69-9180-5901514d8bf9` on 2026-10-12. The final ZIP passed extraction, strict signature, ticket validation and Gatekeeper checks on the development Mac. [macOS CI passed](https://github.com/ratipcan-uysal/AgenticClean/actions/runs/38205748052) with the same application sources; later commits update release documentation only. Second physical Mac validation remains pending.
