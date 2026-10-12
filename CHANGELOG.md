@@ -1,5 +1,12 @@
 # AgenticClean changelog
 
+## 0.7.2 — project disk workspace alpha
+
+- Measure logical project disk usage with explicit background scan/cancel, nested-root exclusion, worktree locations and complete/partial/inaccessible/cancelled states.
+- Add closed project folders with persistent bookmarks; inspect category breakdowns and output blocking reasons in TR/EN.
+- Integrate Xcode output review in the main workspace and add narrowly verified Next.js/Vite cache providers with the existing expiry, identity, activity, change and Trash safeguards.
+- Keep individual move results and remeasure affected projects; never claim output size equals physically reclaimed space.
+
 ## 0.7.1 — comprehension and interface alpha
 
 - Explain process purpose, stopping effects and restart guidance in Turkish and English.

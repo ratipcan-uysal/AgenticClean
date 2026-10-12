@@ -1,8 +1,8 @@
 # AgenticClean
 
-> **Alpha — v0.7.1-alpha.1.** Erken test kullanıcıları için Apple Silicon (M serisi) ZIP indirmesi mevcuttur; Developer ID ile imzalanmış ve Apple tarafından notarize edilmiştir. Genel kullanıma hazır veya bütün Mac’lerde doğrulanmış bir ürün değildir.
+> **Alpha — v0.7.2-alpha.1.** Erken test kullanıcıları için Apple Silicon (M serisi) ZIP indirmesi mevcuttur; Developer ID ile imzalanmış ve Apple tarafından notarize edilmiştir. Genel kullanıma hazır veya bütün Mac’lerde doğrulanmış bir ürün değildir.
 >
-> **Destek:** macOS kaynak izleme, kanıta dayalı proje bağlantıları, onaylı manuel durdurma, yerel AI servislerini inceleme ve doğrulanmış Xcode Build çıktıları için Çöp Sepeti akışı.
+> **Destek:** macOS kaynak izleme, kanıta dayalı proje bağlantıları, onaylı manuel durdurma, yerel AI servislerini inceleme ve proje disk ölçümü ve doğrulanmış Xcode/Next.js/Vite çıktıları için Çöp Sepeti akışı.
 >
 > **Sınırlar:** Proje bağlantısı sohbet sahipliği değildir. GPU ve disk gecikmesi ölçülmez; kimlik doğrulamalı model API’leri ve llama.cpp router model çıkarma desteklenmez. Bağımsız Mac kurulumu, VoiceOver ve hedef kullanıcı çalışması bekliyor. [Alpha durumu](docs/ALPHA.md).
 
@@ -12,7 +12,7 @@ Mac’inde çalışan işleri gör: bağımsız yerel AI sunucuları, geliştirm
 
 ## İndir ve kur
 
-[Alpha indirme sayfasından](https://github.com/ratipcan-uysal/AgenticClean/releases/tag/v0.7.1-alpha.1) `AgenticClean-0.7.1-arm64.zip` dosyasını indir, ZIP’i aç ve `AgenticClean.app` dosyasını Uygulamalar klasörüne taşı. Uygulamayı aç; menü çubuğundan erişebilirsin. macOS 14+ hedeflenir; Intel paketi sunulmaz. İkinci fiziksel Mac üzerinde kurulum doğrulaması henüz yapılmadı. `.cmd` veya terminal betiği gerekmez.
+[Alpha indirme sayfasından](https://github.com/ratipcan-uysal/AgenticClean/releases/tag/v0.7.2-alpha.1) `AgenticClean-0.7.2-arm64.zip` dosyasını indir, ZIP’i aç ve `AgenticClean.app` dosyasını Uygulamalar klasörüne taşı. Uygulamayı aç; menü çubuğundan erişebilirsin. macOS 14+ hedeflenir; Intel paketi sunulmaz. İkinci fiziksel Mac üzerinde kurulum doğrulaması henüz yapılmadı. `.cmd` veya terminal betiği gerekmez.
 
 ## Kullanım
 
@@ -21,7 +21,7 @@ Mac’inde çalışan işleri gör: bağımsız yerel AI sunucuları, geliştirm
 3. **Onayla:** Projenin **Durdur…** düğmesi kapatılacak ve açık kalacak süreçleri nedenleriyle gösterir. AI oturumu listedeyse devam eden iş kesilir. Paylaşılan veya bağlantısı bilinmeyen süreçler dahil edilmez.
 4. **Sonucu gör:** Kapandı, hâlâ çalışıyor, doğrulanamadı ve başarısız sonuçları ayrı gösterilir. Yeni eşleşen süreçler ve okunabilen önce/sonra bellek değerleri ayrıca sunulur; otomatik hızlanma iddiası yapılmaz.
 
-**Disk alanı:** Şu an yalnızca Xcode’un işaretçisi ve proje bağlantısı doğrulanmış `DerivedData/<proje>/Build` çıktıları desteklenir. Boyut, yol ve yeniden derleme etkisini inceleyip seç; ikinci onaydan sonra Çöp Sepeti’ne taşınır. **Çöp Sepeti boşaltılana kadar disk alanı tamamen geri kazanılmaz.** AgenticClean Çöp Sepeti’ni boşaltmaz. [Tam kapsam ve korumalar](docs/CACHE-SCOPE.md).
+**Disk alanı:** Projelerin mantıksal dosya boyutlarını tek çalışma alanında ölç, kaynak/bağımlılık/çıktı dağılımını incele; kapalı projeleri klasör seçerek ekle. Temizleme yalnızca doğrulanmış Xcode `DerivedData/<proje>/Build`, Next.js `.next/cache` ve Vite `node_modules/.vite` çıktılarında sunulur. Etkinlik, kimlik ve değişiklik kontrollerinden geçen çıktıları seçip onayladıktan sonra Çöp Sepeti’ne taşıyabilirsin. Bu, tüm disk analizi veya RAM temizliği değildir. AgenticClean Çöp Sepeti’ni boşaltmaz. [Tam kapsam ve korumalar](docs/CACHE-SCOPE.md).
 
 Codex, Claude Code ve Cursor için süreç/proje inceleme desteklenir; bu araçların sohbet, ayar, kimlik bilgisi veya doğrulanmamış önbellek klasörleri temizlenmez. SwiftPM `.build` içindeki değişmiş bağımlılık kaynakları da temizlik kapsamına alınmaz.
 

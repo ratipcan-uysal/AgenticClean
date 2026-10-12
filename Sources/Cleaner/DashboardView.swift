@@ -5,7 +5,6 @@ private enum WorkTableColumns {
   static let memory: CGFloat = 100
   static let cpu: CGFloat = 67
   static let age: CGFloat = 57
-  static let action: CGFloat = 72
   static let spacing: CGFloat = 8
 }
 
@@ -14,7 +13,11 @@ struct DashboardView: View {
   var languageChanged: () -> Void = {}
   @FocusState private var listFocused: Bool
   @AppStorage("mainSection") private var section = "overview"
+  @State private var diskModel = DiskWorkspaceModel()
+  @State private var sortNotice = false
+  @State private var historyGroup: ResourceGroup?
   @State private var expanded = Set<String>()
+  @State private var manualProjects: [ProcessIdentity: String] = [:]
   @State private var collapsedSearch = Set<String>()
   @State private var stopTarget: ProcessRow?
   @State private var sheet: DashboardSheet?
@@ -23,47 +26,51 @@ struct DashboardView: View {
 
   var body: some View {
     GeometryReader { geometry in
-    VStack(spacing: 0) {
-      SystemHeader(model: model, showSystem: { sheet = .system }, compact: true)
+    HStack(spacing: 0) {
+      sidebar.frame(width: 180)
       Divider()
-      actionBar.padding(.horizontal, 16).padding(.top, 12)
-      if section != "disk" {
-        if geometry.size.height >= 780 {
-          ResourceVisuals(model: model, showMemoryConsumers: showMemoryConsumers)
-            .padding(.horizontal, 16).padding(.top, 8)
-        } else {
+      VStack(spacing: 0) {
+        workspaceHeader.padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 8)
+        if section != "disk" {
+          ResourceRibbon(model: model, showHistory: { sheet = .history }, compact: section != "overview" || geometry.size.height < 700)
+            .padding(.horizontal, 16).padding(.bottom, 10)
+          controls.padding(.horizontal, 16).padding(.vertical, 10)
+        }
+        if section == "projects" {
+          Text(L10n.text("Üstteki CPU tüm Mac’i kapsar. Bu liste yalnızca proje bağlantısı bulunan işleri gösterir; sistem ve diğer uygulamalar için Diğer işler’i aç.", "CPU above covers your whole Mac. This list shows work linked to projects; enable Other work for system processes and other apps."))
+            .font(.caption).foregroundStyle(AgenticPalette.secondaryText)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16)
           HStack {
-            Text(L10n.text("Listeye daha fazla alan ayrıldı", "More room for your running work"))
-              .font(.caption).foregroundStyle(.secondary)
+            Text(L10n.text("Sıralama her bölümde uygulanır; alt süreçler başlatan işin altında tutulur.", "Each section is sorted independently; child processes stay under their parent."))
+              .font(.caption).foregroundStyle(AgenticPalette.secondaryText)
             Spacer()
-            Button(L10n.text("Bellek kullananları göster", "Show memory consumers"), action: showMemoryConsumers)
-            Button(L10n.text("Grafikleri aç", "Open charts")) { sheet = .history }
-          }.padding(.horizontal, 16).padding(.top, 10)
+            Toggle(L10n.text("Diğer işler (\(model.presentation.projectContextCount))", "Other work (\(model.presentation.projectContextCount))"), isOn: $model.request.showProjectContext)
+              .toggleStyle(.checkbox).font(.caption)
+          }.padding(.horizontal, 16).padding(.bottom, 10)
         }
-      }
-      if section != "disk" { controls.padding(16) }
-      Divider()
-      HSplitView {
-        Group {
-          if section == "disk" { diskLanding } else { processList }
-        }.frame(
-          minWidth: 510, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        if section != "disk" && (model.selectedRow != nil || selectedGroup != nil) {
-          Group {
-            if model.selectedRow != nil {
-              inspector
-            } else if let group = selectedGroup {
-              groupInspector(group)
+        Divider()
+        if section != "disk" && hasSelection && geometry.size.width < 1120 {
+          selectionInspector.frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+          HSplitView {
+            Group {
+              if section == "disk" { diskLanding } else { processList }
+            }.frame(minWidth: 490, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            if section != "disk" && hasSelection {
+              selectionInspector.frame(minWidth: 320, idealWidth: 350, maxWidth: 420,
+                maxHeight: .infinity, alignment: .top)
             }
-          }.frame(
-            minWidth: 320, idealWidth: 350, maxWidth: 420,
-            maxHeight: .infinity, alignment: .top)
+          }.frame(maxHeight: .infinity)
         }
-      }.frame(maxHeight: .infinity)
-      Divider()
-      footer
+        Divider()
+        footer
+      }
     }
+    .background(AgenticPalette.canvas)
     }
+    .preferredColorScheme(.dark)
+    .foregroundStyle(AgenticPalette.text)
+    .tint(AgenticPalette.accent).accentColor(AgenticPalette.accent)
     .environment(\.locale, Locale(identifier: language))
     .frame(
       minWidth: 920, maxWidth: .infinity, minHeight: 570, maxHeight: .infinity, alignment: .top
@@ -72,11 +79,14 @@ struct DashboardView: View {
       // Retire the three mutually exclusive views without restoring a hidden filter.
       model.request.mode = section == "projects" ? .projects : .applications
       model.request.project = "all"
-      model.request.filter = .all
+      model.request.filter = section == "ai" ? .localAI : .all
     }
     .onChange(of: section) { _, value in
       model.selection = nil
       model.request.mode = value == "projects" ? .projects : .applications
+      model.request.filter = value == "ai" ? .localAI : .all
+      model.request.project = "all"
+      model.request.query = ""
     }
     .onChange(of: language) { _, _ in
       languageChanged()
@@ -84,10 +94,12 @@ struct DashboardView: View {
     }
     .onChange(of: model.request.query) { _, _ in collapsedSearch.removeAll() }
     .onChange(of: sheet?.id) { _, _ in
-      if let destination = sheet {
+      if case .cleanup? = sheet {
+        section = "disk"; sheet = nil
+      } else if let destination = sheet {
         detailWindow.show(
           title: destination.title,
-          content: sheetContent(destination).environment(\.locale, Locale(identifier: language))
+          content: sheetContent(destination).background(AgenticPalette.canvas).foregroundStyle(AgenticPalette.text).tint(AgenticPalette.accent).environment(\.locale, Locale(identifier: language)).preferredColorScheme(.dark)
         ) {
           sheet = nil
         }
@@ -117,9 +129,9 @@ struct DashboardView: View {
   }
   @ViewBuilder private func sheetContent(_ destination: DashboardSheet) -> some View {
     switch destination {
-    case .cleanup: CacheCleanupView()
+    case .cleanup: EmptyView()
     case .docker: DockerInspector(model: model)
-    case .groupHistory: GroupHistoryView(model: model)
+    case .groupHistory: GroupHistoryView(model: model, initialGroup: historyGroup)
     case .episodes: PressureEpisodesView(model: model)
     case .workReview:
       WorkReviewView(model: model, inspectProject: { path in
@@ -150,11 +162,8 @@ struct DashboardView: View {
             "Yalnızca bu oturum · eksik ölçümler ve duraklamalar çizgide boşluk bırakır.",
             "This session only · missing measurements and pauses leave gaps.")
         )
-        .font(.caption).foregroundStyle(.secondary)
+        .font(.caption).foregroundStyle(AgenticPalette.secondaryText)
         ResourceVisuals(model: model, showMemoryConsumers: showMemoryConsumers)
-        Divider()
-        Text(L10n.text("Son 30 dakika", "Last 30 minutes")).font(.headline)
-        HistoryView(points: model.history.points)
         HStack {
           Spacer()
           Button(L10n.text("Kapat", "Close")) { sheet = nil }.keyboardShortcut(.cancelAction)
@@ -162,39 +171,84 @@ struct DashboardView: View {
       }.padding(24).frame(width: 880)
     }
   }
-  private var actionBar: some View {
-    HStack(spacing: 12) {
+  private var hasSelection: Bool { model.selectedRow != nil || selectedGroup != nil }
+  @ViewBuilder private var selectionInspector: some View {
+    if model.selectedRow != nil { inspector }
+    else if let group = selectedGroup { groupInspector(group) }
+  }
+  private var sectionTitle: String {
+    switch section {
+    case "projects": L10n.text("Projeler", "Projects")
+    case "disk": L10n.text("Disk Alanı", "Disk Space")
+    case "ai": L10n.text("Yerel AI", "Local AI")
+    default: L10n.text("Genel Bakış", "Overview")
+    }
+  }
+  private var sidebar: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack(spacing: 9) {
+        Image(nsImage: NSApplication.shared.applicationIconImage)
+          .resizable()
+          .interpolation(.high)
+          .scaledToFit()
+          .frame(width: 32, height: 32)
+          .accessibilityHidden(true)
+        Text("AgenticClean").font(.headline)
+      }.padding(.horizontal, 10).padding(.top, 18).padding(.bottom, 24)
+      sidebarItem(L10n.text("Genel Bakış", "Overview"), icon: "square.grid.2x2", active: section == "overview") { section = "overview" }
+        .keyboardShortcut("1", modifiers: .command)
+      sidebarItem(L10n.text("Projeler", "Projects"), icon: "folder", active: section == "projects") { section = "projects" }
+        .keyboardShortcut("2", modifiers: .command)
+      sidebarItem(L10n.text("Disk Alanı", "Disk Space"), icon: "internaldrive", active: section == "disk") { section = "disk" }
+        .keyboardShortcut("3", modifiers: .command)
+      Text(L10n.text("ARAÇLAR", "TOOLS")).font(.caption2.weight(.semibold)).foregroundStyle(AgenticPalette.secondaryText)
+        .padding(.leading, 12).padding(.top, 24).padding(.bottom, 4)
+      sidebarItem("Docker", icon: "shippingbox", active: sheet?.id == "docker") { sheet = .docker }
+      sidebarItem(L10n.text("Simülatörler", "Simulators"), icon: "iphone", active: sheet?.id == "simulators") { sheet = .simulators }
+      sidebarItem(L10n.text("Yerel AI", "Local AI"), icon: "cpu", active: section == "ai") { section = "ai" }
+      Spacer()
+      sidebarItem(L10n.text("Ayarlar", "Settings"), icon: "gearshape", active: sheet?.id == "settings") { sheet = .settings }
+      Text(BuildInfo.label).font(.caption2).foregroundStyle(AgenticPalette.secondaryText).help(BuildInfo.detail)
+        .padding(.horizontal, 12).padding(.bottom, 12)
+    }.padding(.horizontal, 10)
+      .background(AgenticPalette.sidebar)
+  }
+  private func sidebarItem(_ title: String, icon: String, active: Bool, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      HStack(spacing: 10) {
+        Image(systemName: icon).frame(width: 20)
+        Text(title).font(.callout.weight(active ? .semibold : .regular))
+        Spacer(minLength: 0)
+      }.padding(.horizontal, 12).padding(.vertical, 11)
+        .foregroundStyle(active ? Color.white : AgenticPalette.secondaryText)
+        .background(active ? AgenticPalette.accent.opacity(0.26) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+        .contentShape(Rectangle())
+    }.buttonStyle(.plain).accessibilityAddTraits(active ? [.isSelected] : [])
+  }
+  private var workspaceHeader: some View {
+    HStack {
       VStack(alignment: .leading, spacing: 3) {
-        Text(L10n.text("Mac’inde neler çalışıyor?", "What is running on your Mac?")).font(
-          .title3.bold())
-        Text(
-          L10n.text(
-            "Çalışan işlerini tanı, kaynak kullanımını anla ve etkisini görerek durdur.",
-            "Recognize your work, understand resource use, and review the impact before stopping.")
-        )
-        .font(.caption).foregroundStyle(.secondary)
+        Text(sectionTitle).font(.system(size: 25, weight: .bold))
+        Text(L10n.text(section == "disk" ? "Projelerinin kapladığı alanı gör, yeniden oluşturulabilir çıktıları incele." : section == "projects" ? "Çalışan işleri, ait oldukları yerden yönet." : "Kaynak kullanımını gör, etkisini inceleyerek yönet.",
+          section == "disk" ? "See project disk usage and review reproducible outputs." : section == "projects" ? "Manage running work by the project it belongs to." : "Understand resource use and review the impact of your actions."))
+          .font(.caption).foregroundStyle(AgenticPalette.secondaryText)
       }
-      Spacer(minLength: 12)
+      Spacer()
       Button {
-        Task { await model.refresh() }
+        if section == "disk" { diskModel.scan(discovered: diskProjects) }
+        else { Task { await model.refresh() } }
       } label: {
-        Label(
-          L10n.text(
-            model.scanning ? "Taranıyor…" : "Şimdi tara", model.scanning ? "Scanning…" : "Scan now"),
-          systemImage: "arrow.clockwise")
-      }.disabled(model.scanning).keyboardShortcut("r", modifiers: .command)
-      Picker(L10n.text("Bölüm", "Section"), selection: $section) {
-        Text(L10n.text("Genel Bakış", "Overview")).tag("overview")
-        Text(L10n.text("Projeler", "Projects")).tag("projects")
-        Text(L10n.text("Disk Alanı", "Disk Space")).tag("disk")
-      }.pickerStyle(.segmented).frame(width: 300)
-      Button("Docker", systemImage: "shippingbox") { sheet = .docker }
-      Button {
-        sheet = .simulators
-      } label: {
-        Label(L10n.text("Simülatörler", "Simulators"), systemImage: "iphone")
+        ZStack {
+          Image(systemName: "arrow.clockwise").opacity((section == "disk" ? diskModel.busy : model.scanning) ? 0 : 1)
+          if section == "disk" ? diskModel.busy : model.scanning { ProgressView().controlSize(.small) }
+        }.frame(width: 28, height: 28)
+      }.buttonStyle(.borderless).disabled(section == "disk" ? diskModel.busy || diskModel.moving : model.scanning).keyboardShortcut("r", modifiers: .command)
+        .accessibilityLabel(L10n.text("Şimdi yenile", "Refresh now"))
+        .help(L10n.text("Şimdi yenile · ⌘R", "Refresh now · ⌘R"))
+      if section != "disk" {
+        DashboardStatusBar(model: model, showMetrics: false, showSystem: { sheet = .system }, showMemory: showMemoryConsumers).frame(width: 280)
       }
-    }.controlSize(.regular)
+    }
   }
   private func showMemoryConsumers() {
     sheet = nil
@@ -207,27 +261,12 @@ struct DashboardView: View {
   }
   private var controls: some View {
     HStack(spacing: 16) {
-      Text(
-        model.request.query.isEmpty
-          ? L10n.text(
-            section == "projects" ? "Projeler" : "Çalışan işler",
-            section == "projects" ? "Projects" : "Running work")
-          : L10n.text("Arama sonuçları", "Search results")
-      ).font(
-        .headline)
-      Spacer(minLength: 8)
-      Picker(L10n.text("Büyükten küçüğe", "Highest first"), selection: $model.request.sort) {
-        ForEach(SortOrder.allCases, id: \.self) {
-          Text(
-            L10n.text($0.rawValue, $0 == .memory ? "Memory" : $0 == .cpu ? "CPU" : "Running time")
-          ).tag($0)
-        }
-      }.frame(width: 205)
       HStack {
-        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+        Image(systemName: "magnifyingglass").foregroundStyle(AgenticPalette.secondaryText)
         TextField(
-          L10n.text("Uygulama, proje veya süreç ara", "Search apps, projects or processes"),
-          text: $model.request.query
+          "", text: $model.request.query,
+          prompt: Text(L10n.text("Uygulama, proje veya süreç ara", "Search apps, projects or processes"))
+            .foregroundStyle(AgenticPalette.secondaryText)
         )
         .textFieldStyle(.plain).accessibilityLabel(L10n.text("Süreç ara", "Search processes"))
         if !model.request.query.isEmpty {
@@ -238,22 +277,39 @@ struct DashboardView: View {
           }
           .buttonStyle(.plain).accessibilityLabel(L10n.text("Aramayı temizle", "Clear search"))
         }
-      }.padding(8).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 7))
-        .frame(width: 285)
+      }.padding(8).background(AgenticPalette.field, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(AgenticPalette.border.opacity(0.7)))
+        .frame(maxWidth: .infinity)
+      VStack(alignment: .trailing, spacing: 4) {
+        Picker(L10n.text("Sıralama", "Sort by"), selection: $model.request.sort) {
+          Text(L10n.text("Bellek", "Memory")).tag(SortOrder.memory)
+          Text("CPU").tag(SortOrder.cpu)
+          Text(L10n.text("Süre", "Age")).tag(SortOrder.age)
+        }.pickerStyle(.segmented).frame(width: 230)
+        Text(sortNotice
+          ? L10n.text("Sıralandı: ", "Sorted by: ") + L10n.text(model.request.sort.rawValue, model.request.sort == .memory ? "Memory" : model.request.sort == .cpu ? "CPU" : "Age")
+          : L10n.text("↓ Büyükten küçüğe", "↓ Highest first"))
+          .font(.caption2).foregroundStyle(AgenticPalette.secondaryText)
+      }
+      .onChange(of: model.request.sort) { _, _ in sortNotice = true }
+      .task(id: model.request.sort) {
+        guard sortNotice else { return }
+        do { try await Task.sleep(for: .seconds(3)); sortNotice = false } catch {}
+      }
     }
   }
   private var footer: some View {
     HStack(spacing: 16) {
       Text(
-        "\(model.presentation.rows.count) "
+        section == "disk" ? L10n.text("\(diskModel.results.count) proje ölçümü · istek üzerine tarama", "\(diskModel.results.count) project measurements · scan on request") : "\(model.presentation.rows.count) "
           + (model.request.query.isEmpty
             ? L10n.text("süreç izleniyor", "processes monitored")
             : L10n.text("eşleşen süreç", "matching processes"))
       )
-      .foregroundStyle(.secondary)
+      .foregroundStyle(AgenticPalette.secondaryText)
       Spacer()
       Button(
-        L10n.text("Grafikler", "Charts"), systemImage: "chart.xyaxis.line"
+        L10n.text("Sistem geçmişi", "System history"), systemImage: "chart.xyaxis.line"
       ) {
         sheet = .history
       }.buttonStyle(.borderless)
@@ -262,6 +318,7 @@ struct DashboardView: View {
         Button(L10n.text("Yavaşlama anlarını incele", "Review pressure periods")) { sheet = .episodes }
         Divider()
         Button(L10n.text("Uygulama / proje geçmişi", "App / project history")) {
+          historyGroup = nil
           sheet = .groupHistory
         }
         Button(
@@ -271,57 +328,63 @@ struct DashboardView: View {
         Button(L10n.text("Simülatörler", "Simulators")) { sheet = .simulators }
         Divider()
         Button(L10n.text("Ölçüm ayrıntıları", "Measurement details")) { sheet = .system }
-        Button(L10n.text("Şimdi tara", "Scan now")) { Task { await model.refresh() } }.disabled(
-          model.scanning)
+        Button(L10n.text("Şimdi tara", "Scan now")) {
+          if section == "disk" { diskModel.scan(discovered: diskProjects) }
+          else { Task { await model.refresh() } }
+        }.disabled(section == "disk" ? diskModel.busy || diskModel.moving : model.scanning)
       } label: {
         Text(
           L10n.text("Diğer işlemler", "More")
             + (model.events.isEmpty ? "" : " (\(model.events.count))"))
       }.fixedSize()
-      Button(L10n.text("Ayarlar", "Settings"), systemImage: "gearshape") { sheet = .settings }
-        .buttonStyle(.borderless)
       Text(BuildInfo.label).foregroundStyle(.tertiary).help(BuildInfo.detail)
     }.font(.caption).padding(12)
   }
+  private var hiddenProjectContext: Bool { section == "projects" && !model.request.showProjectContext && model.presentation.projectContextCount > 0 }
   private var processList: some View {
     ScrollViewReader { proxy in
       VStack(spacing: 0) {
         HStack(spacing: WorkTableColumns.spacing) {
           Text(L10n.text("İş / proje", "Work / project")).frame(
             maxWidth: .infinity, alignment: .leading)
-          Text(L10n.text("Bellek", "Memory")).frame(width: WorkTableColumns.memory, alignment: .trailing)
-          Text("CPU").frame(width: WorkTableColumns.cpu, alignment: .trailing)
-          Text(L10n.text("Süre", "Age")).frame(width: WorkTableColumns.age, alignment: .trailing)
-          if section == "projects" {
-            Text(L10n.text("İşlem", "Action")).frame(width: WorkTableColumns.action)
-          }
-        }.font(.caption.weight(.medium)).foregroundStyle(.secondary)
-          .padding(.horizontal, 16).padding(.vertical, 10)
+          Text(L10n.text("Bellek", "Memory") + (model.request.sort == .memory ? " ↓" : "")).frame(width: WorkTableColumns.memory, alignment: .trailing)
+          Text("CPU" + (model.request.sort == .cpu ? " ↓" : "")).frame(width: WorkTableColumns.cpu, alignment: .trailing)
+          Text(L10n.text("Süre", "Age") + (model.request.sort == .age ? " ↓" : "")).frame(width: WorkTableColumns.age, alignment: .trailing)
+        }.font(.caption.weight(.medium)).foregroundStyle(AgenticPalette.secondaryText)
+          .padding(.horizontal, 16).padding(.vertical, 12).background(AgenticPalette.surface)
         if model.presentation.rows.isEmpty && departedSelection == nil {
           VStack(spacing: 12) {
             ContentUnavailableView(
               model.scanning
                 ? L10n.text("Ölçüm alınıyor", "Taking measurements")
-                : L10n.text("Sonuç bulunamadı", "No results"),
+                : L10n.text(hiddenProjectContext ? "Proje dışı eşleşmeler var" : section == "ai" && model.request.query.isEmpty ? "Yerel AI servisi bulunamadı" : "Sonuç bulunamadı", hiddenProjectContext ? "Matches exist outside projects" : section == "ai" && model.request.query.isEmpty ? "No local AI service detected" : "No results"),
               systemImage: "magnifyingglass",
               description: model.scanning ? nil : Text(
-                model.request.query.isEmpty
+                hiddenProjectContext
+                  ? L10n.text("\(model.presentation.projectContextCount) süreç eşleşiyor, ancak proje bağlantısı yok. Uygulama bileşeni olması bir hata değildir.", "\(model.presentation.projectContextCount) processes match, but have no project attribution. Being an application component is not an error.")
+                  : model.request.query.isEmpty
                   ? L10n.text(
-                    section == "projects" ? "Henüz gösterilecek proje veya süreç yok. Yeniden tarayabilirsin."
-                      : "Henüz gösterilecek çalışan iş yok. Yeniden tarayabilirsin.",
-                    section == "projects" ? "No projects or processes to show yet. Try scanning again."
-                      : "No running work to show yet. Try scanning again.")
+                    section == "projects" ? "Proje bağlantılı eşleşme yok. Diğer eşleşmeler için üstteki proje dışı süreçler seçeneğini aç."
+                      : section == "ai" ? "Ollama, LM Studio veya llama-server çalıştığında burada görünür. Diğer işleri Genel Bakış’ta görebilirsin." : "Henüz gösterilecek çalışan iş yok. Yeniden tarayabilirsin.",
+                    section == "projects" ? "No project-linked matches. Enable other processes above to inspect other matches."
+                      : section == "ai" ? "Ollama, LM Studio or llama-server will appear here when detected. Find other work in Overview." : "No running work to show yet. Try scanning again.")
                   : L10n.text(
                     "“\(model.request.query)” aramasıyla eşleşen süreç bulunamadı. Tüm süreçleri görmek için aramayı temizle.",
                     "No processes match “\(model.request.query)”. Clear the search to see all processes.")
               ))
+            if section == "ai" && model.request.query.isEmpty {
+              Button(L10n.text("Genel Bakış’a git", "Go to Overview")) { section = "overview" }.buttonStyle(.borderedProminent)
+            }
+            if hiddenProjectContext {
+              Button(L10n.text("Diğer eşleşmeleri göster", "Show other matches")) { model.request.showProjectContext = true }
+            }
             if !model.request.query.isEmpty {
               Button(L10n.text("Aramayı temizle", "Clear search")) { model.request.query = "" }
             } else {
               Button(L10n.text("Yeniden tara", "Scan again")) { Task { await model.refresh() } }
                 .disabled(model.scanning)
             }
-          }.frame(maxWidth: .infinity, maxHeight: .infinity)
+          }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(AgenticPalette.list)
         } else {
           List(selection: $model.selection) {
             // Keep the initial viewport anchored to a stable row as live rankings change.
@@ -331,35 +394,41 @@ struct DashboardView: View {
                 "Canlı kullanım · ayrıntı ve işlemler için bir iş seç",
                 "Live usage · select work to inspect details and actions")
             )
-            .font(.caption).foregroundStyle(.secondary)
+            .font(.caption).foregroundStyle(AgenticPalette.secondaryText)
             .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 5)
             .id("cleaner-consumers-top")
             if let row = departedSelection {
               VStack(alignment: .leading, spacing: 4) {
                 Text(L10n.core(row.title)).fontWeight(.medium)
                 Text(L10n.text("Son seçilen · ", "Last selected · ") + presenceText).font(.caption)
-                  .foregroundStyle(.secondary)
+                  .foregroundStyle(AgenticPalette.secondaryText)
               }.tag(Selection.process(row.id)).accessibilityElement(children: .combine)
             }
             if section == "projects" {
-              ForEach(model.presentation.groups) { project in
-                ZStack(alignment: .trailing) {
-                  branchCell(
-                    project, key: project.id, depth: 0,
-                    subtitle: projectSubtitle(project))
-                  if project.isProject {
-                    Button(L10n.text("Durdur…", "Stop…")) {
-                      model.selection = .group(project.id)
-                      if let plan = model.projectStopPlan(for: project.id) {
-                        sheet = .project(plan)
-                      }
-                    }.frame(width: WorkTableColumns.action)
-                      .disabled(model.pendingProjects.contains(project.id))
-                  }
-                }.tag(Selection.group(project.id))
+              ForEach(model.presentation.groups.filter(\.isProject)) { project in
+                branchCell(project, key: project.id, depth: 0, subtitle: projectSubtitle(project))
+                  .tag(Selection.group(project.id))
                 if isExpanded(project.id) {
-                  ForEach(project.rows) { row in
-                    processCell(row).tag(Selection.process(row.id))
+                  ForEach(ProcessTreeItem.ordered(project.rows)) { item in
+                    processCell(item.row, depth: item.depth).tag(Selection.process(item.id))
+                  }
+                }
+              }
+              if model.request.showProjectContext {
+                ForEach([1, 4, 2, 3], id: \.self) { category in
+                  let groups = model.presentation.groups.filter { !$0.isProject && $0.projectSection == category }
+                  if !groups.isEmpty {
+                    Section(projectSectionTitle(category)) {
+                      ForEach(groups) { group in
+                        branchCell(group, key: group.id, depth: 0, subtitle: projectSubtitle(group))
+                          .tag(Selection.group(group.id))
+                        if isExpanded(group.id) {
+                          ForEach(group.rows) { row in
+                            processCell(row).tag(Selection.process(row.id))
+                          }
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -383,9 +452,10 @@ struct DashboardView: View {
                 }
               }
             }
-          }.listStyle(.inset).accessibilityLabel(
+          }.id(section).listStyle(.inset).scrollContentBackground(.hidden).background(AgenticPalette.list).accessibilityLabel(
             L10n.text("Çalışan işler ve projeler", "Running work and projects")
           )
+          .onChange(of: model.request.sort) { _, _ in proxy.scrollTo("cleaner-consumers-top", anchor: .top) }
           .focused($listFocused)
           .onKeyPress(.rightArrow) { navigateBranch(expand: true) }
           .onKeyPress(.leftArrow) { navigateBranch(expand: false) }
@@ -400,7 +470,7 @@ struct DashboardView: View {
               "CPU: share of total capacity. Memory bar: share of physical RAM. * Incomplete measurement."
             )
           )
-          .font(.caption2).foregroundStyle(.secondary).frame(
+          .font(.caption2).foregroundStyle(AgenticPalette.secondaryText).frame(
             maxWidth: .infinity, alignment: .leading)
           Button {
             proxy.scrollTo("cleaner-consumers-top", anchor: .top)
@@ -413,27 +483,30 @@ struct DashboardView: View {
     }
   }
   private var diskLanding: some View {
-    DiskSpaceOverview { sheet = .cleanup }
+    DiskSpaceOverview(model: diskModel, discovered: diskProjects)
+  }
+  private var diskProjects: [String] {
+    Array(Set((model.snapshot?.rows ?? []).compactMap { row in row.project.flatMap { $0.hasProjectMarker ? $0.path : nil } }))
   }
   private func workloadCell(_ work: Workload, row: ProcessRow) -> some View {
     HStack(spacing: 12) {
-      Image(systemName: work.symbol).font(.title3).foregroundStyle(.blue)
+      Image(systemName: work.symbol).font(.title3).foregroundStyle(AgenticPalette.accent)
         .frame(width: 32, height: 32).background(
-          .blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+          AgenticPalette.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
       VStack(alignment: .leading, spacing: 5) {
         Text((row.project.map { $0.name + " · " } ?? "") + L10n.core(row.title)).fontWeight(
           .semibold
         ).lineLimit(1)
         Text(
           row.project?.path
-            ?? L10n.text("Paylaşılan / proje bilinmiyor", "Shared / unknown project")
+            ?? L10n.text("Proje bağlantısı bulunamadı", "Project connection not found")
         )
-        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+        .font(.caption).foregroundStyle(AgenticPalette.secondaryText).lineLimit(1)
         Text(
           L10n.text(
             "Çalışıyor · etkin iş durumu bilinmiyor", "Running · active task status unknown")
         )
-        .font(.caption2).foregroundStyle(.secondary)
+        .font(.caption2).foregroundStyle(AgenticPalette.secondaryText)
       }.frame(maxWidth: .infinity, alignment: .leading)
       quantities(cpu: row.cpu, memory: row.sample.footprint, age: row.sample.age)
     }.padding(.vertical, 8).contentShape(Rectangle()).accessibilityElement(children: .combine)
@@ -501,12 +574,12 @@ struct DashboardView: View {
     } label: {
       HStack(spacing: 10) {
         Image(systemName: isExpanded(key) ? "chevron.down" : "chevron.right")
-          .font(.caption.weight(.semibold)).foregroundStyle(.secondary).frame(width: 12)
+          .font(.caption.weight(.semibold)).foregroundStyle(AgenticPalette.secondaryText).frame(width: 12)
         Image(systemName: group.isProject ? "folder.fill" : group.id == "context:system" ? "gearshape.2" : group.id == "context:unattributed" ? "terminal" : "app")
-          .foregroundStyle(depth == 0 ? Color.blue : Color.purple)
+          .foregroundStyle(depth == 0 ? AgenticPalette.accent : AgenticPalette.accent)
           .frame(width: 26, height: 26)
           .background(
-            (depth == 0 ? Color.blue : Color.purple).opacity(0.10),
+            (depth == 0 ? AgenticPalette.accent : AgenticPalette.accent).opacity(0.10),
             in: RoundedRectangle(cornerRadius: 7))
         VStack(alignment: .leading, spacing: 4) {
           Text(groupTitle(group)).fontWeight(depth == 0 ? .semibold : .medium).lineLimit(1)
@@ -519,14 +592,21 @@ struct DashboardView: View {
                   " · \(group.missingMemoryCount) bellek bilinmiyor",
                   " · \(group.missingMemoryCount) memory readings unavailable"))
           )
-          .font(.caption).foregroundStyle(.secondary).lineLimit(1).help(subtitle)
+          .font(.caption).foregroundStyle(AgenticPalette.secondaryText).lineLimit(1).help(subtitle)
         }.frame(maxWidth: .infinity, alignment: .leading)
         quantities(
           cpu: group.cpu, memory: group.memory, age: group.age,
           missingCPU: group.missingCPUCount, missingMemory: group.missingMemoryCount, grouped: true)
-      }.padding(.leading, CGFloat(depth) * 22).padding(.vertical, depth == 0 ? 9 : 6)
+      }.padding(.leading, CGFloat(depth) * 22).padding(.vertical, depth == 0 ? 12 : 6)
+        .background {
+          if section == "projects" && depth == 0 {
+            RoundedRectangle(cornerRadius: 10).fill(AgenticPalette.surface.opacity(0.35))
+              .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(AgenticPalette.border.opacity(0.25)))
+          }
+        }
         .contentShape(Rectangle())
     }.buttonStyle(.plain)
+      .listRowSeparator(section == "projects" && depth == 0 ? .hidden : .automatic)
       .accessibilityLabel(
         groupTitle(group)
           + (depth == 0
@@ -541,15 +621,15 @@ struct DashboardView: View {
       .accessibilityHint(
         isExpanded(key) ? L10n.text("Daralt", "Collapse") : L10n.text("Genişlet", "Expand"))
   }
-  private func processCell(_ row: ProcessRow) -> some View {
+  private func processCell(_ row: ProcessRow, depth: Int = 0) -> some View {
     HStack(spacing: 10) {
-      Image(systemName: "terminal").foregroundStyle(.secondary).frame(width: 20)
+      Image(systemName: depth > 0 ? "arrow.turn.down.right" : "terminal").foregroundStyle(AgenticPalette.secondaryText).frame(width: 20)
       VStack(alignment: .leading, spacing: 4) {
         Text(L10n.core(row.title)).lineLimit(1).help(L10n.core(row.title))
-        Text(L10n.core(row.applicationComponent)).font(.caption).foregroundStyle(.secondary)
+        Text(WorkIdentityText.summary(row)).lineLimit(2).font(.caption).foregroundStyle(AgenticPalette.secondaryText)
       }.frame(maxWidth: .infinity, alignment: .leading)
       quantities(cpu: row.cpu, memory: row.sample.footprint, age: row.sample.age)
-    }.padding(.leading, 44).padding(.vertical, 7).accessibilityElement(children: .combine)
+    }.padding(.leading, 44 + CGFloat(depth) * 14).padding(.vertical, 7).accessibilityElement(children: .combine)
       .accessibilityHint(
         L10n.text(
           "İşlev, proje bağlantısı ve durdurma ayrıntılarını aç",
@@ -574,7 +654,7 @@ struct DashboardView: View {
     HStack(spacing: WorkTableColumns.spacing) {
       VStack(alignment: .trailing, spacing: 5) {
         Text(Format.bytes(memory) + (missingMemory > 0 && memory != nil ? "*" : ""))
-        ResourceMeter(fraction: memory.map { Double($0) / max(1, memoryScale) }, color: .purple)
+        ResourceMeter(fraction: memory.map { Double($0) / max(1, memoryScale) }, color: AgenticPalette.accent)
       }.frame(width: WorkTableColumns.memory, alignment: .trailing)
         .help(
           L10n.text(
@@ -585,7 +665,7 @@ struct DashboardView: View {
         Text(Format.cpu(capacityCPU(cpu)) + (missingCPU > 0 && cpu != nil ? "*" : ""))
         ResourceMeter(
           fraction: cpu.map { $0 / Double(ProcessInfo.processInfo.activeProcessorCount * 100) },
-          color: .blue)
+          color: AgenticPalette.accent)
       }.frame(width: WorkTableColumns.cpu, alignment: .trailing)
         .help(
           L10n.text(
@@ -593,11 +673,9 @@ struct DashboardView: View {
             "Number and bar: share of total CPU capacity."))
       VStack(alignment: .trailing, spacing: 3) {
         Text(Format.age(age))
-        if grouped { Text(L10n.text("En eski", "Oldest")).font(.caption2).foregroundStyle(.secondary) }
+        if grouped { Text(L10n.text("En eski", "Oldest")).font(.caption2).foregroundStyle(AgenticPalette.secondaryText) }
       }.frame(width: WorkTableColumns.age, alignment: .trailing)
-      if section == "projects" {
-        Color.clear.frame(width: WorkTableColumns.action, height: 1).accessibilityHidden(true)
-      }
+
     }.font(.callout).monospacedDigit().help(
       L10n.text(
         "* Bilinen süreçlerin toplamı; eksik ölçümler var.",
@@ -606,7 +684,8 @@ struct DashboardView: View {
   private func projectSectionTitle(_ section: Int) -> String {
     switch section {
     case 0: L10n.text("Projeler", "Projects")
-    case 1: L10n.text("Uygulamalar ve ortak servisler", "Applications and shared services")
+    case 1: L10n.text("Uygulama bileşenleri", "Application components")
+    case 4: L10n.text("Yerel AI servisleri · istemci projeleri bilinmiyor", "Local AI services · client projects unknown")
     case 2: L10n.text("macOS ve sistem servisleri", "macOS and system services")
     default: L10n.text("Projesi belirlenemeyen işler", "Work without a verified project")
     }
@@ -622,7 +701,13 @@ struct DashboardView: View {
     if group.id == "context:system" {
       return L10n.text("macOS konumlarından tanınan bileşenler", "Components identified by macOS locations")
     }
-    return projectSectionTitle(group.projectSection) + " · " + L10n.text("Proje bağlantısı doğrulanamadı", "Project connection unverified")
+    if group.projectSection == 4 {
+      return L10n.text("Birden fazla işe hizmet verebilir; kullanım sahipliği doğrulanmadı", "May serve multiple jobs; client ownership unverified")
+    }
+    if group.projectSection == 1 {
+      return L10n.text("Uygulama / servis biliniyor; proje bazında ayrıştırılmıyor", "Known application / service; not split by project")
+    }
+    return L10n.text("Bağlantıyı araştırmak için bir süreç seç", "Select a process to investigate its connection")
   }
   private var selectedGroup: ResourceGroup? {
     guard case .group(let key) = model.selection else { return nil }
@@ -630,6 +715,7 @@ struct DashboardView: View {
     return model.presentation.workloads.first { $0.id == key }?.group
   }
   private func groupInspector(_ group: ResourceGroup) -> some View {
+    VStack(spacing: 0) {
     ScrollView {
     VStack(alignment: .leading, spacing: 16) {
       HStack {
@@ -643,7 +729,7 @@ struct DashboardView: View {
         .buttonStyle(.borderless).accessibilityLabel(L10n.text("Ayrıntıyı kapat", "Close details"))
       }
       if section == "projects" && group.isProject {
-        Text(group.id).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+        Text(group.id).font(.caption).foregroundStyle(AgenticPalette.secondaryText).textSelection(.enabled)
       }
       LabeledContent(L10n.text("Süreç sayısı", "Processes"), value: String(group.rows.count))
       LabeledContent(
@@ -651,22 +737,49 @@ struct DashboardView: View {
       LabeledContent(
         L10n.text("CPU · toplam kapasite", "CPU · total capacity"),
         value: Format.cpu(capacityCPU(group.cpu)))
-      Text(measurementDescription(group)).font(.caption).foregroundStyle(.secondary)
-      LabeledContent(L10n.text("En eski süreç", "Oldest process"), value: Format.age(group.age))
-      Text(L10n.text("Bu toplam, temizlenebilir bellek değildir.", "This total is not reclaimable memory.")).font(.caption).foregroundStyle(.secondary)
+      DisclosureGroup(L10n.text("Ölçüm ayrıntıları", "Measurement details")) {
+        Text(measurementDescription(group)).font(.caption).foregroundStyle(AgenticPalette.secondaryText)
+        LabeledContent(L10n.text("En eski süreç", "Oldest process"), value: Format.age(group.age))
+        Text(L10n.text("Bu toplam, temizlenebilir bellek değildir.", "This total is not reclaimable memory.")).font(.caption).foregroundStyle(AgenticPalette.secondaryText)
+      }
+      Divider()
+      Text(L10n.text("Bu grupta ne var?", "What is in this group?")).font(.headline)
+      Text(L10n.text("İşleri soldaki listede genişleterek incele. Buradaki toplamlar seçili gruba aittir.", "Expand the main list to inspect individual jobs. These totals belong to the selected group."))
+        .font(.callout).foregroundStyle(AgenticPalette.secondaryText)
+      if group.isProject, let plan = model.projectStopPlan(for: group.id) {
+        LabeledContent(L10n.text("Durdurmaya uygun", "Eligible to stop"), value: String(plan.targets.count))
+        LabeledContent(L10n.text("Kapsam dışında", "Excluded"), value: String(plan.entries.count - plan.targets.count))
+        Text(L10n.text("Durdurmak bu işlere bağlı önizlemeleri, testleri veya AI yanıtlarını kesebilir. Sonraki adımda işleri ve istisnaları inceleyebilirsin.", "Stopping may interrupt previews, tests, or AI responses that depend on these jobs. Review the jobs and exclusions in the next step."))
+          .font(.callout).foregroundStyle(AgenticPalette.secondaryText)
+      }
+      Button {
+        historyGroup = group
+        sheet = .groupHistory
+      } label: {
+        Label(L10n.text("Bu grubun kaynak geçmişi", "Resource history for this group"), systemImage: "chart.xyaxis.line")
+      }.buttonStyle(.bordered)
+      Text(L10n.text("Proje bağlantısı", "Project connection")).font(.headline)
+      Text(projectSubtitle(group)).font(.callout).textSelection(.enabled)
+      DisclosureGroup(L10n.text("Bağlantı ayrıntıları", "Connection details")) {
+        Text(projectSubtitle(group)).font(.caption).textSelection(.enabled)
+        if group.isProject {
+          let direct = group.rows.filter { $0.project?.inherited == false }.count
+          let inherited = group.rows.filter { $0.project?.inherited == true }.count
+          Text(L10n.text("\(direct) süreç: doğrudan çalışma klasörü", "\(direct) processes: direct working directory")).font(.caption)
+          Text(L10n.text("\(inherited) süreç: üst süreçten çıkarım", "\(inherited) processes: inherited from parent")).font(.caption)
+        }
+        Text(L10n.text("Proje bağlantısı, sohbet sahipliğini göstermez.", "A project connection does not establish chat ownership.")).font(.caption).foregroundStyle(AgenticPalette.secondaryText)
+      }
       Divider()
       if section == "projects" && group.isProject {
         Text(
           L10n.text(
-            "Onay ekranında durdurulacak işleri ve açık kalacak paylaşılan veya belirsiz süreçleri ayrı ayrı görebilirsin.",
-            "Review which work will stop and which shared or uncertain processes will remain running."
+            "Onay ekranında kapatma isteği gönderilecek işleri ve kapsam dışındaki süreçlerin nedenlerini görebilirsin.",
+            "Review which work receives a stop request and why other processes are excluded."
           )
         )
-        .font(.callout).foregroundStyle(.secondary)
-        Button(L10n.text("Projenin işlerini durdur…", "Stop this project’s work…")) {
-          if let plan = model.projectStopPlan(for: group.id) { sheet = .project(plan) }
-        }.buttonStyle(.borderedProminent).disabled(
-          model.pendingProjects.contains(group.id) || model.preparing)
+        .font(.callout).foregroundStyle(AgenticPalette.secondaryText)
+
       } else {
         Text(
           L10n.text(
@@ -674,10 +787,18 @@ struct DashboardView: View {
             "Expand the components to inspect a specific task. Shared apps and helpers are not stopped in bulk."
           )
         )
-        .font(.callout).foregroundStyle(.secondary)
+        .font(.callout).foregroundStyle(AgenticPalette.secondaryText)
       }
     }.padding(20).frame(maxWidth: .infinity, alignment: .topLeading)
-    }.frame(maxHeight: .infinity, alignment: .top).background(.background)
+    }.frame(maxHeight: .infinity, alignment: .top)
+    if section == "projects" && group.isProject {
+      Divider()
+        Button(L10n.text("Durdurmayı incele…", "Review stopping…")) {
+          if let plan = model.projectStopPlan(for: group.id) { sheet = .project(plan) }
+        }.buttonStyle(.borderedProminent).disabled(
+          model.pendingProjects.contains(group.id) || model.preparing).padding(16).frame(maxWidth: .infinity, alignment: .trailing)
+    }
+    }.background(AgenticPalette.surface)
   }
   private var inspector: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -697,10 +818,13 @@ struct DashboardView: View {
             }
             Text("\(row.applicationName) · \(L10n.core(row.applicationComponent))").font(
               .caption
-            ).foregroundStyle(.secondary)
+            ).foregroundStyle(AgenticPalette.secondaryText)
             if !model.presentation.rows.contains(where: { $0.id == row.id }) {
-              Label(presenceText, systemImage: "info.circle").foregroundStyle(.orange)
+              Label(presenceText, systemImage: "info.circle").foregroundStyle(AgenticPalette.warning)
             }
+            Text(WorkIdentityText.summary(row)).font(.caption).foregroundStyle(AgenticPalette.secondaryText)
+            Text(L10n.text("Başlangıç zamanı süreci ayırt eder; hangi sohbetin kullandığı doğrulanmadı.", "Start time distinguishes this process; its chat ownership has not been verified."))
+              .font(.caption).foregroundStyle(AgenticPalette.secondaryText)
             WorkExplanationView(row: row)
             if LocalAIProvider.recognize(executablePath: row.sample.path) != nil {
               ProviderInspector(row: row, model: model).id(row.id)
@@ -708,19 +832,10 @@ struct DashboardView: View {
             ListenerInspector(row: row).id(row.id)
 
             Divider()
-            Text(L10n.text("Proje bağlantısı", "Project connection")).font(.headline)
-            Text(
-              row.project?.path
-                ?? L10n.text("Paylaşılan / proje bilinmiyor", "Shared / unknown project")
-            ).textSelection(.enabled).font(
-              .callout)
-            Text(
-              L10n.core(
-                row.project?.evidence
-                  ?? "Bu süreç birden fazla projeye hizmet edebilir. Proje ve sohbet sahipliği bilinmiyor."
-              )
-            ).font(.caption).foregroundStyle(.secondary)
-            Text(L10n.core(row.ownershipExplanation)).font(.caption).foregroundStyle(.secondary)
+            ProjectConnectionView(row: row, manualPath: Binding(
+              get: { manualProjects[row.id] },
+              set: { manualProjects[row.id] = $0 }
+            )).id(row.id)
             Divider()
             LabeledContent(
               L10n.text("Bellek yükü (footprint)", "Memory footprint"),
@@ -741,17 +856,17 @@ struct DashboardView: View {
               L10n.text(
                 "Aktarılan veri hızı; disk gecikmesini ölçmez.",
                 "Transfer rate; does not measure disk latency.")
-            ).font(.caption2).foregroundStyle(.secondary)
+            ).font(.caption2).foregroundStyle(AgenticPalette.secondaryText)
             if !row.reasons.isEmpty {
               Text(row.reasons.map(L10n.core).joined(separator: " · ")).font(.caption)
-                .foregroundStyle(.orange)
+                .foregroundStyle(AgenticPalette.warning)
             }
             Text(
               L10n.text(
                 "Yüksek kullanım, bu sürecin gereksiz olduğunu göstermez.",
                 "High usage does not mean this process is unnecessary.")
             ).font(.caption2)
-              .foregroundStyle(.secondary)
+              .foregroundStyle(AgenticPalette.secondaryText)
             DisclosureGroup(L10n.text("Teknik ayrıntılar", "Technical details")) {
               VStack(alignment: .leading, spacing: 6) {
                 LabeledContent("PID", value: String(row.id.pid))
@@ -797,7 +912,7 @@ struct DashboardView: View {
           }
         }.padding(12)
       }
-    }.font(.callout).background(.background)
+    }.font(.callout).background(AgenticPalette.surface)
   }
   private var presenceText: String {
     switch model.selectedPresence {
@@ -822,7 +937,7 @@ enum Format {
       ?? L10n.text("Bilinmiyor", "Unknown")
   }
   static func cpu(_ value: Double?) -> String {
-    value.map { String(format: "%.1f%%", locale: L10n.locale, $0) } ?? "—"
+    CPUDisplay.format(value, locale: L10n.locale)
   }
   static func rate(_ value: Double?) -> String {
     value.map {

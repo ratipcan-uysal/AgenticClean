@@ -1,5 +1,6 @@
 #include "ProcessKit.h"
 #include <libproc.h>
+#include <mach/mach_time.h>
 #include <sys/proc_info.h>
 #include <sys/sysctl.h>
 #include <string.h>
@@ -14,7 +15,12 @@ int cleaner_read(int32_t pid, CleanerProcess *result) {
  memset(result, 0, sizeof(*result));
  result->pid=pid; result->parent=info.pbsd.pbi_ppid; result->uid=info.pbsd.pbi_uid;
  result->start_seconds=info.pbsd.pbi_start_tvsec; result->start_microseconds=info.pbsd.pbi_start_tvusec;
- result->cpu_ns=info.ptinfo.pti_total_user+info.ptinfo.pti_total_system;
+ // proc task totals are Mach absolute time units, not nanoseconds on Apple Silicon.
+ mach_timebase_info_data_t timebase;
+ mach_timebase_info(&timebase);
+ __uint128_t ticks = (__uint128_t)info.ptinfo.pti_total_user + info.ptinfo.pti_total_system;
+ __uint128_t nanos = ticks * timebase.numer / timebase.denom;
+ result->cpu_ns = nanos > UINT64_MAX ? UINT64_MAX : (uint64_t)nanos;
  result->resident=info.ptinfo.pti_resident_size;
  struct rusage_info_v2 usage;
  if(proc_pid_rusage(pid, RUSAGE_INFO_V2, (rusage_info_t *)&usage)==0) {
@@ -178,4 +184,51 @@ int cleaner_presence(int32_t pid, uint64_t seconds, uint64_t micros) {
  }
  if(kill(pid,0)==-1 && errno==ESRCH) return 0;
  return -1;
+}
+
+// Return only allowlisted absolute project/config/script paths from argv.
+// Never expose arbitrary flags, argv[0], environment strings, or raw command lines.
+int cleaner_project_paths(int32_t pid, char *output, int capacity) {
+ if (!output || capacity < 1) return -1;
+ output[0] = 0;
+ int limit = 0; size_t size = sizeof(limit); int maxmib[] = {CTL_KERN, KERN_ARGMAX};
+ if (sysctl(maxmib, 2, &limit, &size, NULL, 0) != 0 || limit <= 0 || limit > 2*1024*1024) return -1;
+ char *buffer = malloc(limit); if (!buffer) return -1;
+ size = limit; int mib[] = {CTL_KERN, KERN_PROCARGS2, pid};
+ if (sysctl(mib, 3, buffer, &size, NULL, 0) != 0 || size < sizeof(int)) { free(buffer); return -1; }
+ int argc; memcpy(&argc, buffer, sizeof(argc));
+ if (argc < 1 || argc > 256) { free(buffer); return -1; }
+ char *cursor = buffer + sizeof(argc), *end = buffer + size;
+ char *zero = memchr(cursor, 0, end-cursor);
+ if (!zero) { free(buffer); return -1; }
+ cursor = zero + 1; while (cursor < end && *cursor == 0) cursor++;
+ const char *flags[] = {"--cwd", "--project", "--directory", "--prefix", "--config", "-C"};
+ int pending = 0, used = 0, valid = 1;
+ for (int i=0; i<argc; i++) {
+  if (cursor >= end || !(zero = memchr(cursor, 0, end-cursor))) { valid = 0; break; }
+  const char *path = NULL;
+  if (i > 0) {
+   if (pending && cursor[0] == '/') path = cursor;
+   pending = 0;
+   for (unsigned j=0; j<sizeof(flags)/sizeof(flags[0]); j++) {
+    size_t n = strlen(flags[j]);
+    if (strcmp(cursor, flags[j]) == 0) pending = 1;
+    else if (strncmp(cursor, flags[j], n) == 0 && cursor[n] == '=' && cursor[n+1] == '/') path = cursor+n+1;
+   }
+   // Positional entry scripts only; other positional values may be secrets.
+   if (i == 1 && cursor[0] == '/') {
+    const char *ext = strrchr(cursor, '.');
+    if (ext && (!strcmp(ext,".js") || !strcmp(ext,".mjs") || !strcmp(ext,".py") || !strcmp(ext,".ts"))) path = cursor;
+   }
+   if (path && !strchr(path, '\n') && !strchr(path, '\r')) {
+    size_t n = strlen(path)+1;
+    if (n > 4096 || n > (size_t)(capacity-used)) { valid = 0; break; }
+    memcpy(output+used, path, n); used += (int)n;
+   }
+  }
+  cursor = zero+1;
+ }
+ memset(buffer, 0, size); free(buffer);
+ if (!valid) { memset(output, 0, capacity); return -1; }
+ return used;
 }

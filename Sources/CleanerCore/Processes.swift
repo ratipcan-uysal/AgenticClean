@@ -39,6 +39,12 @@ public struct ProcessSample: Identifiable, Sendable {
     self.cpuTime = cpuTime
     self.memory = memory
   }
+  public var isBundledCodexHelper: Bool {
+    let roots = ["/Applications/ChatGPT.app/Contents/Resources/", "/Applications/Codex.app/Contents/Resources/"]
+    return roots.contains { root in
+      ["cua_node/bin/node", "cua_node/bin/node_repl", "codex-cli/CodexCLI.app/Contents/MacOS/codex"].contains { path == root + $0 }
+    }
+  }
   public var isDevelopment: Bool {
     [
       "node", "node_repl", "python", "python3", "java", "ruby", "bun", "deno", "php", "ollama",
@@ -91,6 +97,9 @@ public struct ProcessRow: Identifiable, Sendable {
   public var attribution: ProjectAttribution { ProjectAttribution(hint: project) }
   public var id: ProcessIdentity { sample.id }
   public var title: String {
+    if sample.isBundledCodexHelper {
+      return sample.name == "codex" ? "Codex · Araç çalıştırıcısı" : "Codex araç yardımcısı · Node.js"
+    }
     if sample.isMaestroMCP { return "Maestro · Mobil test bağlantısı" }
     if let agent = sample.agentSession { return agent.name + " · AI kodlama oturumu" }
     switch sample.name {
@@ -108,6 +117,9 @@ public struct ProcessRow: Identifiable, Sendable {
     owner == "—" ? "Üst uygulama belirlenemedi" : "Üst uygulama: " + owner
   }
   public var explanation: String {
+    if sample.isBundledCodexHelper {
+      return "Codex uygulama paketindeki araç altyapısı. Bu klasörde çalışması, projenin sunucusu olduğunu göstermez. Hangi sohbetin kullandığı ve hâlâ gerekli olup olmadığı doğrulanamadı. Beklerken de çalışma ortamını bellekte tutabilir."
+    }
     if sample.isMaestroMCP {
       return
         "Maestro’nun mobil uygulama test araçlarına erişim sağlayan MCP bağlantısı. Java bu aracı çalıştıran altyapıdır."

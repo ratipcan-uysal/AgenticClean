@@ -12,6 +12,7 @@ public enum SortOrder: String, CaseIterable, Sendable {
   case age = "Çalışma süresi"
 }
 public enum ProcessFilter: String, CaseIterable, Sendable {
+  case localAI = "Yerel AI"
   case all = "Tümü"
   case development = "Geliştirme"
   case attention = "Yüksek kullanım"
@@ -21,6 +22,7 @@ public enum Selection: Hashable, Sendable {
   case process(ProcessIdentity)
 }
 public struct PresentationRequest: Equatable, Sendable {
+  public var showProjectContext = false
   public var query = ""
   public var project = "all"
   public var filter = ProcessFilter.all
@@ -35,6 +37,7 @@ public struct ApplicationBranch: Identifiable, Sendable {
   public func projectKey(_ project: ResourceGroup) -> String { id + "\u{0}" + project.id }
 }
 public struct Presentation: Sendable {
+  public var projectContextCount = 0
   public var rows: [ProcessRow] = []
   public var workloads: [Workload] = []
   public var groups: [ResourceGroup] = []
@@ -49,12 +52,12 @@ public struct Presentation: Sendable {
     -> Presentation
   {
     assert(!Thread.isMainThread, "Filtering, sorting and aggregation must run off the main thread")
-    let rows = snapshot.rows.filter { row in
+    let matching = snapshot.rows.filter { row in
       let search =
         "\(row.title) \(row.applicationName) \(row.applicationComponent) \(row.sample.path) \(row.owner) \(row.project?.path ?? "") \(row.id.pid)"
       return (request.query.isEmpty || search.localizedCaseInsensitiveContains(request.query))
         && (request.project == "all" || (row.project?.path ?? "project:unknown") == request.project)
-        && (request.filter == .all || (request.filter == .development && row.sample.isDevelopment)
+        && (request.filter == .all || (request.filter == .localAI && LocalAIProvider.recognize(executablePath: row.sample.path) != nil) || (request.filter == .development && row.sample.isDevelopment)
           || (request.filter == .attention && !row.reasons.isEmpty))
     }.sorted { lhs, rhs in
       switch request.sort {
@@ -65,11 +68,17 @@ public struct Presentation: Sendable {
         }
       case .cpu:
         if lhs.cpu != rhs.cpu { return (lhs.cpu ?? -1) > (rhs.cpu ?? -1) }
+        if lhs.sample.footprint != rhs.sample.footprint {
+          return (lhs.sample.footprint.map(Double.init) ?? -1) > (rhs.sample.footprint.map(Double.init) ?? -1)
+        }
       case .age:
         if lhs.id.seconds != rhs.id.seconds { return lhs.id.seconds < rhs.id.seconds }
       }
       return lhs.id.pid < rhs.id.pid
     }
+    let contextCount = matching.filter { $0.project == nil }.count
+    let rows = request.mode == .projects && !request.showProjectContext
+      ? matching.filter { $0.project != nil } : matching
     // Group once, off the main actor; input order also orders the children.
     func ordered(_ groups: [ResourceGroup]) -> [ResourceGroup] {
       groups.sorted { lhs, rhs in
@@ -80,6 +89,9 @@ public struct Presentation: Sendable {
           }
         case .cpu:
           if lhs.cpu != rhs.cpu { return (lhs.cpu ?? -1) > (rhs.cpu ?? -1) }
+          if lhs.memory != rhs.memory {
+            return (lhs.memory.map(Double.init) ?? -1) > (rhs.memory.map(Double.init) ?? -1)
+          }
         case .age:
           let l = lhs.oldestStart ?? UInt64.max
           let r = rhs.oldestStart ?? UInt64.max
@@ -91,6 +103,7 @@ public struct Presentation: Sendable {
     let apps = ordered(ResourceSummary.groups(rows))
     let groups = request.mode == .projects ? ordered(ResourceSummary.projectOverview(rows)) : apps
     var result = Presentation()
+    result.projectContextCount = contextCount
     result.rows = rows
     result.workloads = Workload.prepare(rows, sort: request.sort)
     result.groups = groups
@@ -129,6 +142,7 @@ extension MonitorEngine: SnapshotSource {}
       defaults.set(request.sort.rawValue, forKey: "sortOrder")
       if request.query != oldValue.query || request.project != oldValue.project
         || request.filter != oldValue.filter || request.mode != oldValue.mode
+        || request.showProjectContext != oldValue.showProjectContext
       {
         selection = nil
       }

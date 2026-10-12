@@ -383,3 +383,44 @@ private actor FakeSource: SnapshotSource {
   #expect(model.selection == nil)
   model.stopMonitoring()
 }
+
+@Test func smallCPUValuesRemainDistinctFromZeroAndUnknown() {
+  let tr = Locale(identifier: "tr_TR")
+  let en = Locale(identifier: "en_US")
+  #expect(CPUDisplay.format(0, locale: tr) == "0,0%")
+  #expect(CPUDisplay.format(0.004, locale: tr) == "<0,01%")
+  #expect(CPUDisplay.format(0.02, locale: tr) == "0,02%")
+  #expect(CPUDisplay.format(0.04, locale: en) == "0.04%")
+  #expect(CPUDisplay.format(12.34, locale: en) == "12.3%")
+  #expect(CPUDisplay.format(nil, locale: en) == "—")
+  #expect(CPUDisplay.format(.nan, locale: en) == "—")
+}
+
+@Test func cpuSortingUsesMemoryOnlyForExactTies() async {
+  let values: [(Int32, Double?, UInt64)] = [(901001, 0.02, 900), (901002, 0.04, 10), (901003, 0.02, 100), (901004, nil, 9999)]
+  let rows = values.map { pid, cpu, memory in
+    ProcessRow(sample: fixture(pid, footprint: memory), cpu: cpu, reasons: [], owner: "fixture",
+      project: ProjectHint(path: "/fixture/\(pid)", sourcePID: pid, inherited: false, hasProjectMarker: true))
+  }
+  let value = Snapshot(date: Date(), uptime: 1, interval: 5, duration: 0, system: .init(ticks: [], memory: []), swap: 0, cpu: 1, paging: [], rows: rows, applications: ResourceSummary.groups(rows), projects: ResourceSummary.projectGroups(rows), unreadableCount: 0, quality: .fresh, sustainedCPU: false)
+  var request = PresentationRequest()
+  request.mode = .projects
+  request.sort = .cpu
+  let result = await Presentation.prepare(value, request: request)
+  let expected: [Int32] = [901002, 901001, 901003, 901004]
+  #expect(result.rows.map { $0.id.pid } == expected)
+  #expect(result.groups.compactMap { $0.rows.first?.id.pid } == expected)
+  #expect(Workload.prepare(rows, sort: .cpu).compactMap { $0.primary?.id.pid } == expected)
+}
+
+@Test func localAIFilterExcludesUnrelatedDevelopmentProcesses() async {
+  let value = snapshot([
+    fixture(910001, path: "/opt/homebrew/bin/llama-server"),
+    fixture(910002, path: "/opt/homebrew/bin/ollama"),
+    fixture(910003, path: "/opt/homebrew/bin/node")
+  ])
+  var request = PresentationRequest()
+  request.filter = .localAI
+  let result = await Presentation.prepare(value, request: request)
+  #expect(Set(result.rows.map { $0.id.pid }) == [910001, 910002])
+}

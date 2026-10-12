@@ -91,6 +91,7 @@ public struct ResourceGroup: Identifiable, Sendable {
     if isProject { return 0 }
     if id == "context:unattributed" { return 3 }
     if id == "context:system" { return 2 }
+    if id.hasPrefix("context:service:") { return 4 }
     return 1
   }
   public init(id: String, name: String, rows: [ProcessRow]) {
@@ -134,7 +135,7 @@ public enum ResourceSummary {
     var unknownWork: [ProcessRow] = []
     for row in rows where row.project == nil {
       let path = row.sample.path
-      if ["/System/", "/usr/libexec/", "/usr/sbin/", "/sbin/"].contains(where: path.hasPrefix) {
+      if ProjectConnectionKind.isSystem(path) {
         system.append(row)
       } else if ["ollama", "llama-server", "llmster"].contains(row.sample.name) {
         var service = row
@@ -152,7 +153,7 @@ public enum ResourceSummary {
     var result = projectGroups(rows.filter { $0.project != nil })
     // Use executable application identity, not the launching agent, for independent services.
     result += groups(apps).map {
-      ResourceGroup(id: "context:app:" + $0.id, name: $0.name, rows: $0.rows)
+      ResourceGroup(id: ($0.rows.allSatisfy { LocalAIProvider.recognize(executablePath: $0.sample.path) != nil } ? "context:service:" : "context:app:") + $0.id, name: $0.name, rows: $0.rows)
     }
     if !system.isEmpty {
       result.append(ResourceGroup(id: "context:system", name: "macOS ve sistem servisleri", rows: system))
@@ -165,7 +166,7 @@ public enum ResourceSummary {
   public static func projectGroups(_ rows: [ProcessRow]) -> [ResourceGroup] {
     Dictionary(grouping: rows, by: { $0.project?.path ?? "project:unknown" }).map { key, values in
       ResourceGroup(
-        id: key, name: values[0].project?.name ?? "Paylaşılan / proje bilinmiyor", rows: values)
+        id: key, name: values[0].project?.name ?? "Proje bağlantısı bulunamadı", rows: values)
     }
   }
 }
@@ -234,10 +235,21 @@ public struct ApplicationIdentity: Sendable {
   /// Called only by MonitorEngine, never from a view or the main actor.
   public static func read(_ path: String) -> ApplicationIdentity {
     let url = URL(fileURLWithPath: path, isDirectory: true).appendingPathComponent(
-      "Contents/Info.plist")
+      "Contents/Info.plist", isDirectory: false)
     let plist = (try? Data(contentsOf: url)).flatMap {
       try? PropertyListSerialization.propertyList(from: $0, format: nil) as? [String: Any]
     }
     return ApplicationIdentity(bundleID: plist?["CFBundleIdentifier"] as? String, path: path)
+  }
+}
+
+/// Values are percentages of the capacity chosen by the caller; no extra scaling here.
+public enum CPUDisplay {
+  public static func format(_ value: Double?, locale: Locale) -> String {
+    guard let value, value.isFinite, value >= 0 else { return "—" }
+    if value > 0 && value < 0.01 {
+      return "<" + String(format: "%.2f%%", locale: locale, 0.01)
+    }
+    return String(format: value > 0 && value < 1 ? "%.2f%%" : "%.1f%%", locale: locale, value)
   }
 }

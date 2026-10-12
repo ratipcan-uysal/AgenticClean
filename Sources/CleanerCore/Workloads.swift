@@ -61,6 +61,9 @@ public struct Workload: Identifiable, Sendable {
         }
       case .cpu:
         if a.group.cpu != b.group.cpu { return (a.group.cpu ?? -1) > (b.group.cpu ?? -1) }
+        if a.group.memory != b.group.memory {
+          return (a.group.memory.map(Double.init) ?? -1) > (b.group.memory.map(Double.init) ?? -1)
+        }
       case .age:
         if a.group.age != b.group.age { return a.group.age > b.group.age }
       }

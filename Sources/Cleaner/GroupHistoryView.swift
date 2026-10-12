@@ -8,6 +8,11 @@ struct GroupHistoryView: View {
   @State private var projects = false
   @State private var selected = ""
   @State private var memory = true
+  init(model: Dashboard, initialGroup: ResourceGroup? = nil) {
+    self.model = model
+    _projects = State(initialValue: initialGroup?.isProject ?? false)
+    _selected = State(initialValue: initialGroup?.id ?? "")
+  }
   private var choices: [GroupUsage] {
     var found: [String: GroupUsage] = [:]
     for frame in model.groupHistory.frames {
@@ -16,7 +21,7 @@ struct GroupHistoryView: View {
     return found.values.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
   }
   private var selectedID: String {
-    choices.contains { $0.id == selected } ? selected : choices.first?.id ?? ""
+    selected.isEmpty ? choices.first?.id ?? "" : selected
   }
   private var samples: [PlotPoint] {
     let selectedGroupID = selectedID
@@ -64,6 +69,7 @@ struct GroupHistoryView: View {
           Text(L10n.text("Uygulamalar", "Applications")).tag(false)
           Text(L10n.text("Projeler", "Projects")).tag(true)
         }.pickerStyle(.segmented).frame(width: 240)
+          .onChange(of: projects) { _, _ in selected = "" }
         Picker(L10n.text("Ölçüm", "Metric"), selection: $memory) {
           Text(L10n.text("Bellek (GiB)", "Memory (GiB)")).tag(true)
           Text(L10n.text("CPU (% kapasite)", "CPU (% capacity)")).tag(false)
@@ -73,6 +79,9 @@ struct GroupHistoryView: View {
         L10n.text("İncele", "Inspect"),
         selection: Binding(get: { selectedID }, set: { selected = $0 })
       ) {
+        if !selected.isEmpty && !choices.contains(where: { $0.id == selected }) {
+          Text(selected + L10n.text(" · henüz ölçüm yok", " · no samples yet")).tag(selected)
+        }
         ForEach(choices) { usage in
           Text(
             projects
@@ -94,13 +103,13 @@ struct GroupHistoryView: View {
             y: .value(L10n.text("Kullanım", "Usage"), sample.value),
             series: .value(L10n.text("Kesit", "Segment"), sample.segment)
           )
-          .foregroundStyle(memory ? .purple : .blue)
+          .foregroundStyle(memory ? AgenticPalette.secondaryTrace : AgenticPalette.accent)
           .lineStyle(StrokeStyle(lineWidth: 2, dash: sample.partial ? [4, 4] : []))
           PointMark(
             x: .value(L10n.text("Zaman", "Time"), sample.date),
             y: .value(L10n.text("Kullanım", "Usage"), sample.value)
           )
-          .foregroundStyle(memory ? .purple : .blue).symbolSize(10)
+          .foregroundStyle(memory ? AgenticPalette.secondaryTrace : AgenticPalette.accent).symbolSize(10)
         }.chartYScale(domain: .automatic(includesZero: true)).frame(height: 230)
       }
       Text(

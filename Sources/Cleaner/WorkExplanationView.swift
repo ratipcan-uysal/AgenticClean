@@ -5,7 +5,8 @@ struct WorkExplanationView: View {
   let row: ProcessRow
   private var role: WorkRole { WorkRole.identify(row) }
   private var purpose: String {
-    switch role {
+    if row.sample.isBundledCodexHelper { return L10n.core(row.explanation) }
+    return switch role {
     case .localAI: L10n.text("Mac’inde AI modelleri çalıştırır; birden fazla proje kullanıyor olabilir.", "Runs AI models on your Mac; multiple projects may use it.")
     case .simulator: L10n.text("Bir cihazı taklit ederek uygulamanı denemeni sağlar.", "Emulates a device so you can test your app.")
     case .agent: L10n.text("AI kodlama oturumu; yanıt üretebilir ve araç çalıştırabilir.", "An AI coding session that can generate responses and run tools.")

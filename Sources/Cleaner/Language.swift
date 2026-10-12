@@ -8,6 +8,13 @@ enum L10n {
     isEnglish ? english : turkish
   }
   static func core(_ value: String) -> String {
+    if isEnglish {
+      if value == "Codex · Araç çalıştırıcısı" { return "Codex · Tool runner" }
+      if value == "Codex araç yardımcısı · Node.js" { return "Codex tool helper · Node.js" }
+      if value == "Codex uygulama paketindeki araç altyapısı. Bu klasörde çalışması, projenin sunucusu olduğunu göstermez. Hangi sohbetin kullandığı ve hâlâ gerekli olup olmadığı doğrulanamadı. Beklerken de çalışma ortamını bellekte tutabilir." {
+        return "Tool infrastructure bundled with Codex. Working in this folder does not establish that it is the project's server. Its chat ownership and continued necessity are unverified. It can retain its runtime in memory while waiting."
+      }
+    }
     if value == "Cleaner veya temel sistem süreci" {
       return text("AgenticClean veya temel sistem süreci", "AgenticClean or an essential system process")
     }
@@ -183,6 +190,7 @@ enum L10n {
       "Found from this process’s own working directory.",
     "Paylaşılan / proje bilinmiyor": "Shared / unknown project",
     "Proje bilinmiyor": "Unknown project",
+    "Proje bağlantısı bulunamadı": "Project connection not found",
     "Masaüstü": "Desktop",
     "1 GiB üzerinde bellek yükü": "Memory footprint exceeds 1 GiB",
     "3 ölçümdür CPU ≥ %25": "CPU at least 25% of one core for 3 measurements",

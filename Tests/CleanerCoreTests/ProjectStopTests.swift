@@ -273,7 +273,7 @@ private actor RefreshingParentExitActions: ProjectProcessActions {
   #expect(result.replacementCount == 2)
 }
 
-@Test func projectOverviewRanksByValueAcrossCategories() async {
+@Test func projectOverviewRanksByValueAcrossCategoriesWhenContextIsEnabled() async {
   let base = projectRow(990001)
   var large = base.sample
   large.id = .init(pid: 990002, seconds: 1)
@@ -289,6 +289,7 @@ private actor RefreshingParentExitActions: ProjectProcessActions {
   for sort in SortOrder.allCases {
     var request = PresentationRequest()
     request.mode = .projects
+    request.showProjectContext = true
     request.sort = sort
     let result = await Presentation.prepare(projectSnapshot(rows), request: request)
     #expect(result.groups.first?.id == "context:system")

@@ -1,8 +1,8 @@
 # AgenticClean
 
-> **Alpha — v0.7.1-alpha.1.** An Apple Silicon (M-series) ZIP is available for early testers, signed with Developer ID and notarized by Apple. This is not a general-availability release or a claim of compatibility with every Mac.
+> **Alpha — v0.7.2-alpha.1.** An Apple Silicon (M-series) ZIP is available for early testers, signed with Developer ID and notarized by Apple. This is not a general-availability release or a claim of compatibility with every Mac.
 >
-> **Supported:** macOS resource monitoring, evidence-based project links, reviewed manual stopping, local AI service inspection, and Trash-only cleanup of verified Xcode Build outputs.
+> **Supported:** macOS resource monitoring, evidence-based project links, reviewed manual stopping, local AI service inspection, and project disk measurement and Trash-only cleanup of verified Xcode/Next.js/Vite outputs.
 >
 > **Limits:** Project links do not establish chat ownership. GPU and disk latency are not measured; authenticated model APIs and llama.cpp router unload are unsupported. Independent Mac installation, VoiceOver and target-user studies remain pending. [Alpha status](docs/ALPHA.md).
 
@@ -12,13 +12,13 @@ Free, open-source, native macOS menu bar app. [Türkçe](README.md) · [MIT lice
 
 ## Download and install
 
-Download `AgenticClean-0.7.1-arm64.zip` from the [alpha release](https://github.com/ratipcan-uysal/AgenticClean/releases/tag/v0.7.1-alpha.1), unzip it, and move `AgenticClean.app` to Applications. Open it and use its menu bar item. Targets macOS 14+; no Intel binary is provided. Installation on a second physical Mac has not yet been validated. No terminal script is required.
+Download `AgenticClean-0.7.2-arm64.zip` from the [alpha release](https://github.com/ratipcan-uysal/AgenticClean/releases/tag/v0.7.2-alpha.1), unzip it, and move `AgenticClean.app` to Applications. Open it and use its menu bar item. Targets macOS 14+; no Intel binary is provided. Installation on a second physical Mac has not yet been validated. No terminal script is required.
 
 ## Scan → review → confirm → see results
 
 - **Scan** updates system CPU, memory pressure and running work. Select work directly in Overview or inspect full paths in Projects; independent model servers do not require expanding an AI app.
 - **Stop…** on a project previews the exact process list and exclusions. A listed AI session will interrupt ongoing work. Shared or unverified processes stay running. Stop results distinguish closed, still running, unverified and failed. New matching identities and measured before/after memory are separate observations, not a promise of speed improvement.
-- **Disk space** currently covers only verified Xcode `DerivedData/<project>/Build` outputs. Review size, path and rebuild impact; explicitly select items and confirm moving them to macOS Trash. **Space is not fully reclaimed until you empty Trash.** AgenticClean never empties Trash. See [cleanup scope](docs/CACHE-SCOPE.md).
+- **Disk space** measures logical project sizes and source/dependency/output breakdowns in one workspace. Add closed projects with the folder picker. Cleanup supports verified Xcode `DerivedData/<project>/Build`, Next.js `.next/cache`, and Vite `node_modules/.vite` only. Select and review exact paths and rebuild effects; identity, changes and activity are checked again before moving to macOS Trash. This is not whole-disk analysis or RAM cleaning. AgenticClean never empties Trash. See [cleanup scope](docs/CACHE-SCOPE.md).
 - **Simulators** lists running Xcode devices and requires confirmation to shut down the selected device. Shared simulator daemons are never mass-terminated.
 - **History** shows system charts and app/project consumption. App/project history keeps the last 30 minutes, at least 15 seconds between samples, retaining the top 20 CPU and top 20 memory groups. Partial usage is dashed; the total may be higher. Entirely missing/omitted readings leave gaps, not zeroes. History stays in memory for the current session only.
 
@@ -57,7 +57,7 @@ Use **Settings → Language / Dil** at the bottom of the dashboard to choose **T
 
 ## Local service support and release status
 
-Overview now shows independent local AI servers and development runtimes without expanding an AI app. Projects has a cross-application reviewed stop preview; potentially shared model servers are excluded even when their working directory matches. Disk Space remains a separate, Trash-only Xcode build cleanup flow.
+Overview now shows independent local AI servers and development runtimes without expanding an AI app. Projects has a cross-application reviewed stop preview; potentially shared model servers are excluded even when their working directory matches. Disk Space provides explicit project measurement and a shared, reviewed Trash-only output cleanup flow.
 
 CPU, memory-pressure and swap mini charts are visible in Overview and Projects. Measurement details include logical-core CPU, macOS thermal context, Low Power Mode and pressure source; process details include disk read/write throughput (not latency). Missing readings remain unknown.
 

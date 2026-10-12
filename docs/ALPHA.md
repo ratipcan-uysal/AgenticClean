@@ -1,4 +1,4 @@
-# AgenticClean v0.7.1-alpha.1
+# AgenticClean v0.7.2-alpha.1
 
 Early access, macOS only. MIT licensed. The release includes an Apple Silicon ZIP signed with Developer ID and notarized by Apple.
 
@@ -9,12 +9,13 @@ Early access, macOS only. MIT licensed. The release includes an Apple Silicon ZI
 - Explicit process/project stop review with identity checks and shared-service exclusions.
 - Ollama/LM Studio loopback inventory and reviewed model unload; read-only llama.cpp slot inspection.
 - Explicit Docker Desktop container inspection/stop and simulator shutdown.
-- Trash-only cleanup of verified Xcode DerivedData project Build outputs.
+- Project disk workspace with explicit background scans, category distribution and persisted folder bookmarks.
+- Trash-only cleanup of verified Xcode Build, Next.js cache and Vite dependency cache outputs, with activity/identity/preview checks.
 - Turkish and English UI, no telemetry or chat database access.
 
 ## Validation and limits
 
-On 2026-10-10, all 129 tests passed in the public source checkout on the local Apple Silicon development Mac (17.089 seconds test execution, excluding compilation). The suite includes memory-pressure timeline and work-explanation/episode regression coverage. This does not substitute for hardware or usability validation.
+On 2026-10-12, all 152 tests passed on the local Apple Silicon development Mac (17.054 seconds test execution, excluding compilation). This includes project disk scanning and the three cleanup providers. The suite includes memory-pressure timeline and work-explanation/episode regression coverage. This does not substitute for hardware or usability validation.
 
 Local development checks cover process identity reuse, missing counters, bounded test-helper timeouts, listener identity, project boundaries and disposable Trash restoration. CI runs the full suite and builds an ad-hoc signed candidate on macOS. Check the actual Actions result for the release commit; a workflow file alone is not evidence of success.
 

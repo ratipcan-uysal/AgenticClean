@@ -2,7 +2,13 @@ import CryptoKit
 import Darwin
 import Foundation
 
-/// A deliberately narrow allowlist: only Xcode's generated Build directory, never all DerivedData.
+public enum CleanupProvider: String, Sendable, CaseIterable { case xcode, next, vite }
+public struct CleanupExclusion: Sendable, Identifiable {
+  public let path: String
+  public let reason: String
+  public var id: String { path }
+}
+/// Provider-verified generated output; never a whole project or dependency directory.
 public struct CacheCleanupCandidate: Identifiable, Sendable {
   public let id: UUID
   public let path: String
@@ -10,6 +16,11 @@ public struct CacheCleanupCandidate: Identifiable, Sendable {
   public let bytes: UInt64
   public let fileCount: Int
   public let blockedReason: String?
+  public var provider: CleanupProvider = .xcode
+  fileprivate var metadataFingerprint: String = ""
+  public var projectRoot: String {
+    provider == .xcode ? URL(fileURLWithPath: projectPath).deletingLastPathComponent().path : projectPath
+  }
   public var name: String {
     URL(fileURLWithPath: projectPath).deletingPathExtension().lastPathComponent
   }
@@ -23,6 +34,7 @@ public struct CacheCleanupPlan: Sendable {
   public let candidates: [CacheCleanupCandidate]
   public let skippedCount: Int
   public let notices: [String]
+  public var exclusions: [CleanupExclusion] = []
 }
 
 public struct CacheCleanupResult: Identifiable, Sendable {
@@ -89,6 +101,7 @@ public actor CacheCleanupEngine {
   private let quietPeriod: TimeInterval
   private let currentDate: @Sendable () -> Date
   private var currentPlan: CacheCleanupPlan?
+  private var projectRoots: [URL] = []
 
   public init() {
     root =
@@ -116,24 +129,35 @@ public actor CacheCleanupEngine {
     self.activity = activity
   }
 
-  public func scan() throws -> CacheCleanupPlan {
-    currentPlan = nil
-    let now = currentDate()
-    guard FileManager.default.fileExists(atPath: root.path) else {
-      let plan = CacheCleanupPlan(
-        id: UUID(), createdAt: now, candidates: [], skippedCount: 0, notices: [])
-      currentPlan = plan
-      return plan
-    }
+  /// Metadata-only discovery; does not create a cleanup preview or measure outputs.
+  public func discoveredXcodeProjects() throws -> [String] {
+    guard FileManager.default.fileExists(atPath: root.path) else { return [] }
     try Self.checkAncestors(root)
+    let entries = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+    var paths = Set<String>()
+    for entry in entries.sorted(by: { $0.path < $1.path }).prefix(200) {
+      try Task.checkCancellation()
+      if let project = try? verifyScope(entry.appendingPathComponent("Build")) {
+        paths.insert(URL(fileURLWithPath: project).deletingLastPathComponent().path)
+      }
+    }
+    return paths.sorted()
+  }
+
+  public func scan(projectPaths: [String] = []) throws -> CacheCleanupPlan {
+    projectRoots = Array(Set(projectPaths)).sorted().map { URL(fileURLWithPath: $0) }
+    currentPlan = nil
+    let rootExists = FileManager.default.fileExists(atPath: root.path)
+    if rootExists { try Self.checkAncestors(root) }
     let observed = try activity()
     let deadline = ProcessInfo.processInfo.systemUptime + 8
     var remaining = maximumEntries
     var candidates: [CacheCleanupCandidate] = []
     var skipped = 0
     var notices: [String] = []
-    let children = try FileManager.default.contentsOfDirectory(
-      at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+    var exclusions: [CleanupExclusion] = []
+    let children = rootExists ? try FileManager.default.contentsOfDirectory(
+      at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) : []
     if children.count > 200 {
       notices.append("Only the first 200 DerivedData folders were checked.")
     }
@@ -161,6 +185,28 @@ public actor CacheCleanupEngine {
         throw CancellationError()
       } catch {
         skipped += 1
+        exclusions.append(.init(path: build.path, reason: error.localizedDescription))
+      }
+    }
+    for project in projectRoots {
+      for provider in [CleanupProvider.next, .vite] {
+        try Task.checkCancellation()
+        let output = project.appendingPathComponent(provider == .next ? ".next/cache" : "node_modules/.vite")
+        guard FileManager.default.fileExists(atPath: output.path) else { continue }
+        do {
+          let proof = try verifyWeb(output, provider: provider)
+          var budget = maximumEntries
+          let measured = try measure(output, deadline: ProcessInfo.processInfo.systemUptime + 8, remaining: &budget)
+          let blocked = Self.blockingReason(observed, project: project.path, build: output.path, web: true)
+            ?? (currentDate().timeIntervalSince(measured.newestModification) < quietPeriod ? "This folder changed in the last minute. Wait and scan again." : nil)
+          var candidate = CacheCleanupCandidate(id: UUID(), path: output.path, projectPath: project.path, bytes: measured.bytes, fileCount: measured.count, blockedReason: blocked, fingerprint: measured.digest, rootIdentity: measured.identity)
+          candidate.provider = provider
+          candidate.metadataFingerprint = proof
+          candidates.append(candidate)
+        } catch is CancellationError { throw CancellationError() } catch {
+          skipped += 1
+          exclusions.append(.init(path: output.path, reason: error.localizedDescription))
+        }
       }
     }
     if skipped > 0 {
@@ -168,8 +214,9 @@ public actor CacheCleanupEngine {
         "Some folders were excluded because their identity, generated-file marker or full size could not be verified."
       )
     }
-    let plan = CacheCleanupPlan(
-      id: UUID(), createdAt: now, candidates: candidates, skippedCount: skipped, notices: notices)
+    var plan = CacheCleanupPlan(
+      id: UUID(), createdAt: currentDate(), candidates: candidates, skippedCount: skipped, notices: notices)
+    plan.exclusions = exclusions
     currentPlan = plan
     return plan
   }
@@ -193,11 +240,11 @@ public actor CacheCleanupEngine {
             candidate.blockedReason ?? "This item cannot be cleaned.")
         }
         let build = URL(fileURLWithPath: candidate.path)
-        guard try verifyScope(build) == candidate.projectPath else {
+        guard try verifyCandidate(candidate, build: build) else {
           throw CacheCleanupFailure.message("Project metadata changed. Scan again.")
         }
         if let blocked = Self.blockingReason(
-          try activity(), project: candidate.projectPath, build: candidate.path)
+          try activity(), project: candidate.projectPath, build: candidate.path, web: candidate.provider != .xcode)
         {
           throw CacheCleanupFailure.message(blocked)
         }
@@ -210,13 +257,13 @@ public actor CacheCleanupEngine {
             "Folder contents changed after preview. Nothing was moved; scan again.")
         }
         if let blocked = Self.blockingReason(
-          try activity(), project: candidate.projectPath, build: candidate.path)
+          try activity(), project: candidate.projectPath, build: candidate.path, web: candidate.provider != .xcode)
         {
           throw CacheCleanupFailure.message(blocked)
         }
         // Activity inspection can be slow. Keep the final scope and identity checks adjacent
         // to the path-based Trash call, with no process scan between them and the move.
-        guard try verifyScope(build) == candidate.projectPath else {
+        guard try verifyCandidate(candidate, build: build) else {
           throw CacheCleanupFailure.message("Project metadata changed. Scan again.")
         }
         guard CacheFileIdentity(try Self.metadata(build)) == candidate.rootIdentity else {
@@ -237,6 +284,54 @@ public actor CacheCleanupEngine {
     return results
   }
 
+  private func verifyCandidate(_ candidate: CacheCleanupCandidate, build: URL) throws -> Bool {
+    if candidate.provider == .xcode { return try verifyScope(build) == candidate.projectPath }
+    return try verifyWeb(build, provider: candidate.provider) == candidate.metadataFingerprint
+  }
+
+  private func verifyWeb(_ output: URL, provider: CleanupProvider) throws -> String {
+    let project = output.deletingLastPathComponent().deletingLastPathComponent()
+    guard projectRoots.contains(where: { $0.path == project.path }),
+      output.path == project.appendingPathComponent(provider == .next ? ".next/cache" : "node_modules/.vite").path
+    else { throw CacheCleanupFailure.message("Folder is outside the supported cleanup scope.") }
+    try Self.checkAncestors(output)
+    let info = try Self.metadata(output)
+    guard info.st_uid == getuid(), info.st_mode & S_IFMT == S_IFDIR else {
+      throw CacheCleanupFailure.message("Project identity could not be verified.")
+    }
+    func readJSON(_ url: URL) throws -> (Data, [String: Any]) {
+      try Self.checkAncestors(url.deletingLastPathComponent())
+      let m = try Self.metadata(url)
+      guard m.st_mode & S_IFMT == S_IFREG, m.st_uid == getuid(), m.st_size <= 1_048_576 else {
+        throw CacheCleanupFailure.message("Project metadata is unsupported.")
+      }
+      let data = try Self.readMetadata(url, maximum: 1_048_576)
+      guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        throw CacheCleanupFailure.message("Project metadata is unsupported.")
+      }
+      return (data, json)
+    }
+    let package = try readJSON(project.appendingPathComponent("package.json"))
+    let dependency = provider == .next ? "next" : "vite"
+    let dependencies = (package.1["dependencies"] as? [String: Any] ?? [:])
+      .merging(package.1["devDependencies"] as? [String: Any] ?? [:]) { first, _ in first }
+    guard dependencies[dependency] is String else {
+      throw CacheCleanupFailure.message("Supported tool dependency could not be verified.")
+    }
+    let marker = try readJSON(provider == .next
+      ? project.appendingPathComponent(".next/build-manifest.json")
+      : output.appendingPathComponent("deps/_metadata.json"))
+    guard provider == .next ? marker.1["pages"] is [String: Any] : marker.1["optimized"] is [String: Any] else {
+      throw CacheCleanupFailure.message("Generated output metadata could not be verified.")
+    }
+    var hash = SHA256()
+    hash.update(data: package.0)
+    hash.update(data: marker.0)
+    let projectInfo = try Self.metadata(project)
+    hash.update(data: Data("\(project.path)|\(projectInfo.st_dev)|\(projectInfo.st_ino)|\(projectInfo.st_birthtimespec.tv_sec)|\(projectInfo.st_birthtimespec.tv_nsec)".utf8))
+    return hash.finalize().map { String(format: "%02x", $0) }.joined()
+  }
+
   private func verifyScope(_ build: URL) throws -> String {
     guard build.lastPathComponent == "Build",
       build.deletingLastPathComponent().deletingLastPathComponent().path == root.path
@@ -254,7 +349,7 @@ public actor CacheCleanupEngine {
     guard metadataInfo.st_mode & S_IFMT == S_IFREG, metadataInfo.st_size <= 65_536 else {
       throw CacheCleanupFailure.message("Project metadata is unsupported.")
     }
-    let data = try Data(contentsOf: metadataURL)
+    let data = try Self.readMetadata(metadataURL, maximum: 65_536)
     guard
       let plist = try PropertyListSerialization.propertyList(from: data, format: nil)
         as? [String: Any],
@@ -362,6 +457,38 @@ public actor CacheCleanupEngine {
     return info
   }
 
+  /// Open metadata without following a replaced final symlink, with a hard read limit.
+  private static func readMetadata(_ url: URL, maximum: Int) throws -> Data {
+    let descriptor = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+    guard descriptor >= 0 else { throw CacheCleanupFailure.message("Project metadata is unsupported.") }
+    defer { close(descriptor) }
+    var before = stat()
+    guard fstat(descriptor, &before) == 0, before.st_mode & S_IFMT == S_IFREG,
+      before.st_uid == getuid(), before.st_size >= 0, before.st_size <= maximum else {
+      throw CacheCleanupFailure.message("Project metadata is unsupported.")
+    }
+    var buffer = [UInt8](repeating: 0, count: maximum + 1)
+    var total = 0
+    while total < buffer.count {
+      try Task.checkCancellation()
+      let count = buffer.withUnsafeMutableBytes { bytes in
+        read(descriptor, bytes.baseAddress!.advanced(by: total), bytes.count - total)
+      }
+      if count < 0 && errno == EINTR { continue }
+      guard count >= 0 else { throw CacheCleanupFailure.message("Project metadata is unsupported.") }
+      if count == 0 { break }
+      total += count
+    }
+    var after = stat()
+    guard total <= maximum, fstat(descriptor, &after) == 0,
+      CacheFileIdentity(before) == CacheFileIdentity(after), before.st_size == after.st_size,
+      before.st_ctimespec.tv_sec == after.st_ctimespec.tv_sec,
+      before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec else {
+      throw CacheCleanupFailure.message("Project metadata changed. Scan again.")
+    }
+    return Data(buffer.prefix(total))
+  }
+
   private static func buildSystemMarker(_ url: URL) -> Bool {
     var buffer = [UInt8](repeating: 0, count: 16)
     let count = getxattr(
@@ -369,20 +496,20 @@ public actor CacheCleanupEngine {
     return count > 0 && String(decoding: buffer.prefix(count), as: UTF8.self) == "true"
   }
 
-  private static func blockingReason(_ observed: CacheActivity, project: String, build: String)
+  private static func blockingReason(_ observed: CacheActivity, project: String, build: String, web: Bool = false)
     -> String?
   {
     guard observed.complete else {
       return
         "Some of your processes could not be checked. Cleanup is unavailable until activity can be verified."
     }
-    let projectFolder = URL(fileURLWithPath: project).deletingLastPathComponent().path
+    let projectFolder = web ? project : URL(fileURLWithPath: project).deletingLastPathComponent().path
     let buildTools: Set<String> = [
       "Xcode", "xcodebuild", "XCBBuildService", "SWBBuildService", "swift-build", "swift-frontend",
       "clang", "clang++", "ld",
     ]
     for sample in observed.samples {
-      if buildTools.contains(sample.name) || sample.path.contains("/Xcode.app/") {
+      if !web && (buildTools.contains(sample.name) || sample.path.contains("/Xcode.app/")) {
         return "Quit Xcode and finish running builds before cleaning build outputs."
       }
       if sample.path == build || sample.path.hasPrefix(build + "/") {

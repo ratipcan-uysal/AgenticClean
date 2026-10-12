@@ -16,37 +16,46 @@ struct ProjectStopView: View {
     _plan = State(initialValue: plan)
   }
   private var events: [OperationEvent] { model.events.filter { $0.projectBatchID == plan.id } }
+  private var showingResults: Bool { submitted || running }
+  private var excludedGroups: [String: [ProjectStopEntry]] {
+    Dictionary(grouping: plan.entries.filter { $0.exclusion != nil }, by: { $0.exclusion ?? "" })
+  }
   private var resultSummary: String {
     let closed = events.filter { $0.state == .closed }.count
     let active = events.filter { $0.state == .stillRunning }.count
     let uncertain = events.filter { $0.state == .unverified }.count
     let failed = events.filter { if case .failed = $0.state { true } else { false } }.count
+    let pending = events.filter { $0.state == .requested }.count
+    let waiting = max(0, plan.targets.count - events.count)
+    let progress = running ? L10n.text(" · \(pending) kontrol ediliyor · \(waiting) sırada", " · \(pending) checking · \(waiting) queued") : ""
     return L10n.text(
       "\(closed) kapandı · \(active) hâlâ çalışıyor · \(uncertain) doğrulanamadı · \(failed) başarısız",
-      "\(closed) closed · \(active) still running · \(uncertain) unverified · \(failed) failed")
+      "\(closed) closed · \(active) still running · \(uncertain) unverified · \(failed) failed") + progress
   }
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       Text(
-        submitted
+        showingResults
           ? L10n.text("Proje durdurma sonucu", "Project stop results")
-          : L10n.text("Projeyi durdur?", "Stop this project?")
+          : plan.targets.isEmpty
+            ? L10n.text("Bu projede durdurulabilecek iş bulunmuyor", "No tasks in this project can be stopped")
+            : L10n.text("Projenin \(plan.targets.count) işini durdur?", "Stop \(plan.targets.count) tasks in this project?")
       )
       .font(.title2.bold())
       VStack(alignment: .leading, spacing: 5) {
         Text(plan.request.mode == .projects ? plan.name : "\(plan.application) · \(plan.name)")
           .font(.headline)
-        Text(plan.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+        Text(plan.path).font(.caption).foregroundStyle(AgenticPalette.secondaryText).textSelection(.enabled)
         Text(
-          submitted
+          showingResults
             ? resultSummary
             : L10n.text(
-              "\(plan.targets.count) süreç durdurulacak · \(plan.excludedCount) süreç açık kalacak",
+              "\(plan.targets.count) sürece kapatma isteği gönderilecek · \(plan.excludedCount) süreç kapsam dışında",
               "\(plan.targets.count) processes to stop · \(plan.excludedCount) excluded")
         )
         .font(.callout.weight(.medium))
       }
-      if !submitted {
+      if !showingResults && !plan.targets.isEmpty {
         Text(
           L10n.text(
             "Listede AI oturumu varsa yanıt üretimi ve devam eden işler kesilir. Sunuculara bağlı önizlemeler kapanabilir. Yalnızca aşağıda onayladığın süreçlere kapatma isteği gönderilir; sonuç 15 saniye kontrol edilir.",
@@ -64,34 +73,44 @@ struct ProjectStopView: View {
         }
       }
       ScrollView {
-        LazyVStack(alignment: .leading, spacing: 12) {
-          ForEach(plan.entries) { entry in
-            VStack(alignment: .leading, spacing: 4) {
-              Text("\(L10n.core(entry.row.title)) · PID \(entry.id.pid)").font(
-                .callout.weight(.medium))
-              if entry.exclusion == nil {
-                Text(L10n.core(entry.row.stopImpact)).font(.caption).foregroundStyle(.secondary)
+        LazyVStack(alignment: .leading, spacing: 16) {
+          if plan.excludedCount > 0 {
+            VStack(alignment: .leading, spacing: 12) {
+              Label(L10n.text("Kapatma isteği gönderilmeyecek", "No stop request will be sent"), systemImage: "lock.shield")
+                .font(.headline)
+              Text(L10n.text("\(plan.excludedCount) süreç · nedenlere göre gruplandı. Süreçleri görmek için bir grubu aç.", "\(plan.excludedCount) processes · grouped by reason. Expand a group to see its processes."))
+                .font(.caption).foregroundStyle(AgenticPalette.secondaryText)
+              ForEach(excludedGroups.keys.sorted(), id: \.self) { reason in
+                DisclosureGroup {
+                  ForEach(excludedGroups[reason] ?? []) { entry in
+                    processRow(entry).padding(.vertical, 5)
+                  }
+                } label: {
+                  HStack(alignment: .top, spacing: 10) {
+                    Text("\(excludedGroups[reason]?.count ?? 0)")
+                      .font(.callout.bold()).monospacedDigit()
+                      .padding(.horizontal, 8).padding(.vertical, 4)
+                      .background(AgenticPalette.field, in: Capsule())
+                    Text(L10n.core(reason)).font(.callout).fixedSize(horizontal: false, vertical: true)
+                  }
+                }
+                Divider()
               }
-              if let exclusion = entry.exclusion {
-                Label(
-                  L10n.text("Açık kalacak: ", "Excluded: ") + L10n.core(exclusion),
-                  systemImage: "lock"
-                )
-                .font(.caption).foregroundStyle(.secondary)
-              } else if let event = events.first(where: { $0.process == entry.id }) {
-                EventStatus(event: event)
-              } else {
-                Text(
-                  L10n.text("Durdurulacak · ", "Will stop · ")
-                    + Format.bytes(entry.row.sample.footprint)
-                )
-                .font(.caption).foregroundStyle(.secondary)
-              }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-            Divider()
+            }.padding(16).background(AgenticPalette.surface, in: RoundedRectangle(cornerRadius: 10))
           }
-        }.padding(12)
-      }.background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
+          if !plan.targets.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+              Label(showingResults ? L10n.text("İşlem sonuçları", "Action results") : L10n.text("Durdurulacak işler", "Tasks to stop"),
+                    systemImage: showingResults ? "checklist" : "stop.circle")
+                .font(.headline)
+              ForEach(plan.entries.filter { $0.exclusion == nil }) { entry in
+                processRow(entry)
+                Divider()
+              }
+            }.padding(16).background(AgenticPalette.list, in: RoundedRectangle(cornerRadius: 10))
+          }
+        }
+      }
       if let error { Text(error).font(.callout).foregroundStyle(.orange).accessibilityLabel(error) }
       if running || refreshing {
         HStack {
@@ -124,7 +143,7 @@ struct ProjectStopView: View {
                 "This change does not prove a speed improvement. * Missing measurements are excluded."
               )
             )
-            .foregroundStyle(.secondary)
+            .foregroundStyle(AgenticPalette.secondaryText)
           }.font(.caption)
         }
         Text(
@@ -133,10 +152,10 @@ struct ProjectStopView: View {
             "Results remain in operation history. A closed process may restart; check the main list for its current state."
           )
         )
-        .font(.caption).foregroundStyle(.secondary)
+        .font(.caption).foregroundStyle(AgenticPalette.secondaryText)
       }
       HStack {
-        Button(submitted ? L10n.text("Kapat", "Close") : L10n.text("Vazgeç", "Cancel")) {
+        Button(submitted || plan.targets.isEmpty ? L10n.text("Kapat", "Close") : L10n.text("Vazgeç", "Cancel")) {
           dismiss()
         }
         .keyboardShortcut(.cancelAction).disabled(running || refreshing)
@@ -147,6 +166,7 @@ struct ProjectStopView: View {
           }
           Button(L10n.text("Listeyi yenile", "Refresh list")) { refreshPlan() }
             .disabled(running || refreshing || model.paused)
+          if !plan.targets.isEmpty {
           TimelineView(.periodic(from: .now, by: 1)) { _ in
             VStack(alignment: .trailing, spacing: 4) {
               if !model.canConfirmProjectStop(plan) {
@@ -161,7 +181,7 @@ struct ProjectStopView: View {
                         "Güncel listeyi yenileyip tekrar incele.",
                         "Refresh and review the current list.")
                 )
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(AgenticPalette.secondaryText)
               }
               Button(
                 L10n.text(
@@ -172,11 +192,35 @@ struct ProjectStopView: View {
               }.disabled(running || refreshing || !model.canConfirmProjectStop(plan))
             }
           }
+          }
         }
       }
-    }.padding(24).frame(width: 640, height: 570).onChange(of: running || refreshing) { _, value in
+    }.padding(24).frame(width: 680, height: 620).onChange(of: running || refreshing) { _, value in
       setPanelBusy(value)
     }
+  }
+  private func processRow(_ entry: ProjectStopEntry) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text(L10n.core(entry.row.title)).font(.callout.weight(.semibold))
+      Text(WorkIdentityText.summary(entry.row)).font(.caption).foregroundStyle(AgenticPalette.secondaryText)
+      Text("PID \(entry.id.pid) · " + Format.bytes(entry.row.sample.footprint))
+        .font(.caption).foregroundStyle(AgenticPalette.secondaryText)
+      if entry.exclusion == nil {
+        if let event = events.first(where: { $0.process == entry.id }) {
+          EventStatus(event: event)
+        } else if running {
+          Text(L10n.text("İstek sırası bekleniyor", "Waiting to send request")).font(.caption)
+        }
+        if !showingResults {
+          Text(L10n.core(entry.row.stopImpact)).font(.caption).foregroundStyle(AgenticPalette.secondaryText)
+        } else {
+        DisclosureGroup(L10n.text("Etkisi ve ayrıntılar", "Impact and details")) {
+          Text(L10n.core(entry.row.stopImpact)).font(.callout)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }.font(.caption).foregroundStyle(AgenticPalette.secondaryText)
+        }
+      }
+    }.frame(maxWidth: .infinity, alignment: .leading)
   }
   private func submit() {
     running = true

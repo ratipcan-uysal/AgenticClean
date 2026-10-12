@@ -15,8 +15,8 @@ struct DockerInspector: View {
       Label("Docker", systemImage: "shippingbox").font(.title2.bold())
       Text(
         L10n.text(
-          "Compose proje ve servis adları Docker’dan okunur. Bir servis başka projeler tarafından da kullanılabilir. Konteynerler VM belleğine ayrıca eklenmez.",
-          "Compose project and service names come from Docker. Other projects may also use a service. Container usage is not added on top of VM memory."
+          "Docker, projelerinin sunucu ve veritabanlarını çalıştırabilir. Durdurmak bağlı siteleri veya uygulamaları kesebilir. Bir servis birden fazla projeye hizmet verebilir.",
+          "Docker can run servers and databases for your projects. Stopping a service may interrupt connected sites or apps. A service may support multiple projects."
         )
       )
       .font(.callout).foregroundStyle(.secondary)

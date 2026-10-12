@@ -95,19 +95,17 @@ struct SystemHeader: View {
   }
   private var statusTitle: String {
     switch model.quality {
-    case .fresh: L10n.text("Ölçüm ayrıntıları", "Measurement details")
-    case .partial: L10n.text("Bazı ölçümler eksik", "Some measurements unavailable")
+    case .fresh, .partial: L10n.text("Ölçüm ayrıntıları", "Measurement details")
     case .stale: L10n.text("Eski ölçüm", "Stale measurement")
     case .failed: L10n.text("Ölçüm hatası", "Measurement error")
     }
   }
   private var statusIcon: String {
-    model.quality == .fresh ? "info.circle" : "exclamationmark.circle"
+    model.quality == .fresh || model.quality == .partial ? "info.circle" : "exclamationmark.circle"
   }
   private var statusColor: Color {
     switch model.quality {
     case .failed: .red
-    case .partial: .orange
     default: .secondary
     }
   }
@@ -534,7 +532,10 @@ struct SimulatorsView: View {
                 .accessibilityLabel(
                   L10n.text(device.name + " simülatörünü kapat", "Shut down " + device.name))
               }
-              Text(device.udid).font(.caption2).foregroundStyle(.secondary)
+              Text(L10n.text("Sanal test cihazı · proje bağlantısı bilinmiyor", "Virtual test device · project connection unknown")).font(.caption).foregroundStyle(.secondary)
+              DisclosureGroup(L10n.text("Teknik kimlik", "Technical identity")) {
+                Text(device.udid).font(.caption2).textSelection(.enabled)
+              }
               if let event = model.events.first(where: {
                 $0.simulatorID == device.id
               }) {
@@ -559,8 +560,8 @@ struct SimulatorsView: View {
       }
       Text(
         L10n.text(
-          "Yalnızca seçilen cihaza simctl kapatma isteği gönderilir. Yardımcı komut 15 saniyede zaman aşımına uğrar; en geç 20 saniyede sonuç döner.",
-          "Only the selected device receives a simctl shutdown request. The helper times out after 15 seconds and returns a result within 20 seconds."
+          "Seçilen sanal cihaz kapanır; içindeki uygulama ve devam eden testler kesilir. Diğer cihazlar açık kalır. Sonucu burada görebilirsin.",
+          "The selected virtual device shuts down, interrupting its apps and running tests. Other devices stay open. The result appears here."
         )
       ).font(.caption).foregroundStyle(.secondary)
       HStack {

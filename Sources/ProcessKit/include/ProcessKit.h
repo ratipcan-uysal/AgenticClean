@@ -35,3 +35,5 @@ int cleaner_listeners(int32_t pid, uint64_t seconds, uint64_t micros,
 typedef struct { uint32_t user, system, nice, idle; } CleanerCoreTicks;
 // Returns processor count, or -1 for unavailable/bounds exceeded.
 int cleaner_core_ticks(CleanerCoreTicks *output, int capacity);
+// NUL-separated allowlisted absolute argv paths only, bytes written or -1.
+int cleaner_project_paths(int32_t pid, char *output, int capacity);

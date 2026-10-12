@@ -70,6 +70,7 @@ private struct CacheFixture {
   let candidate = try #require(plan.candidates.first)
   #expect(candidate.bytes == UInt64("temporary build output".utf8.count))
   #expect(candidate.projectPath == fixture.project)
+  #expect(candidate.projectRoot == URL(fileURLWithPath: fixture.project).deletingLastPathComponent().path)
   #expect(candidate.blockedReason == nil)
   let results = try await engine.moveToTrash(planID: plan.id, selectedIDs: [candidate.id])
   #expect(results.count == 1 && results[0].moved)
@@ -262,4 +263,12 @@ private struct CacheFixture {
   try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: fixture.build.path)
   let quiet = try await engine.scan()
   #expect(try #require(quiet.candidates.first).blockedReason == nil)
+}
+
+@Test func cacheDiscoveryUsesVerifiedMetadataWithoutCreatingPreview() async throws {
+  let fixture = try CacheFixture(); defer { fixture.remove() }
+  let engine = fixture.engine()
+  let paths = try await engine.discoveredXcodeProjects()
+  #expect(paths == [URL(fileURLWithPath: fixture.project).deletingLastPathComponent().path])
+  await #expect(throws: (any Error).self) { try await engine.moveToTrash(planID: UUID(), selectedIDs: [UUID()]) }
 }
