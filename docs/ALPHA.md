@@ -1,6 +1,6 @@
 # AgenticClean v0.7.2-alpha.1
 
-Early access, macOS only. MIT licensed. The release includes an Apple Silicon ZIP signed with Developer ID and notarized by Apple.
+Early access, macOS only. MIT licensed. The previous 0.7.1 release provides an Apple Silicon ZIP signed with Developer ID and notarized by Apple. The 0.7.2 source update is published; its binary release is still being prepared.
 
 ## What is included
 
