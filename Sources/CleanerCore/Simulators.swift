@@ -81,19 +81,75 @@ public enum CommandRunner {
     }
   }
 }
+public enum SimulatorToolIssue: Error, LocalizedError, Sendable, Equatable {
+  case xcodeNotConfigured, simulatorToolMissing
+  public var errorDescription: String? {
+    switch self {
+    case .xcodeNotConfigured: "iOS simülatörlerini yönetmek için Xcode gerekiyor."
+    case .simulatorToolMissing: "Seçili geliştirici konumunda iOS simülatör aracı bulunamadı."
+    }
+  }
+}
+
+protocol SimulatorEnvironment: Sendable {
+  func developerDirectory() async throws -> String
+  func isExecutable(_ path: String) async -> Bool
+  func run(_ executable: String, arguments: [String]) async throws -> Data
+}
+
+private struct NativeSimulatorEnvironment: SimulatorEnvironment {
+  @concurrent func developerDirectory() async throws -> String {
+    if let override = ProcessInfo.processInfo.environment["DEVELOPER_DIR"], !override.isEmpty {
+      return override
+    }
+    do {
+      let data = try await CommandRunner.run(executable: "/usr/bin/xcode-select", arguments: ["--print-path"])
+      return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    } catch CommandFailure.exit {
+      throw SimulatorToolIssue.xcodeNotConfigured
+    }
+  }
+  @concurrent func isExecutable(_ path: String) async -> Bool {
+    FileManager.default.isExecutableFile(atPath: path)
+  }
+  func run(_ executable: String, arguments: [String]) async throws -> Data {
+    try await CommandRunner.run(executable: executable, arguments: arguments)
+  }
+}
+
 public enum SimulatorControl {
   private struct DeviceList: Decodable { let devices: [String: [SimulatorDevice]] }
+  // Resolve without xcrun: its shim can trigger macOS's developer-tools installer.
+  private static func tool(environment: some SimulatorEnvironment) async throws -> String {
+    let selected = try await environment.developerDirectory()
+    guard !selected.isEmpty else { throw SimulatorToolIssue.xcodeNotConfigured }
+    var directory = URL(fileURLWithPath: selected, isDirectory: true)
+    if directory.pathExtension == "app" {
+      directory.appendPathComponent("Contents/Developer", isDirectory: true)
+    }
+    let executable = directory.appendingPathComponent("usr/bin/simctl").path
+    guard await environment.isExecutable(executable) else {
+      throw SimulatorToolIssue.simulatorToolMissing
+    }
+    return executable
+  }
   public static func devices() async throws -> [SimulatorDevice] {
-    let data = try await CommandRunner.run(
-      executable: "/usr/bin/xcrun", arguments: ["simctl", "list", "devices", "booted", "--json"])
+    try await devices(environment: NativeSimulatorEnvironment())
+  }
+  static func devices(environment: some SimulatorEnvironment) async throws -> [SimulatorDevice] {
+    let executable = try await tool(environment: environment)
+    let data = try await environment.run(executable, arguments: ["list", "devices", "booted", "--json"])
     return try JSONDecoder().decode(DeviceList.self, from: data).devices.values.flatMap { $0 }
       .filter { $0.state == "Booted" }.sorted { $0.name < $1.name }
   }
   public static func shutdown(_ device: SimulatorDevice) async throws {
+    try await shutdown(device, environment: NativeSimulatorEnvironment())
+  }
+  static func shutdown(_ device: SimulatorDevice, environment: some SimulatorEnvironment) async throws {
     guard UUID(uuidString: device.udid) != nil else {
       throw MonitorError.message("Geçersiz simülatör kimliği.")
     }
-    _ = try await CommandRunner.run(
-      executable: "/usr/bin/xcrun", arguments: ["simctl", "shutdown", device.udid])
+    let executable = try await tool(environment: environment)
+    _ = try await environment.run(executable, arguments: ["shutdown", device.udid])
   }
 }

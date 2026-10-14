@@ -515,8 +515,12 @@ struct SimulatorsView: View {
           .disabled(
             model.scanningDevices)
       }
-      if let error = model.simulatorError {
-        Text(L10n.core(error)).foregroundStyle(.red).font(.caption).textSelection(.enabled)
+      if let error = model.simulatorError, model.simulatorToolIssue == nil {
+        Label(L10n.text("Simülatörler okunamadı. Yeniden deneyebilirsin.", "Could not read simulators. Try refreshing."), systemImage: "exclamationmark.circle")
+          .foregroundStyle(AgenticPalette.warning).font(.callout)
+        DisclosureGroup(L10n.text("Teknik ayrıntılar", "Technical details")) {
+          Text(L10n.core(error)).font(.caption).textSelection(.enabled)
+        }
       }
       if model.scanningDevices { ProgressView(L10n.text("Cihazlar okunuyor…", "Reading devices…")) }
       ScrollView {
@@ -527,7 +531,7 @@ struct SimulatorsView: View {
                 Text(device.name)
                 Spacer()
                 Button(L10n.text("Kapat…", "Shut down…")) { target = device }.disabled(
-                  model.pendingDevices.contains(device.id)
+                  model.pendingDevices.contains(device.id) || model.scanningDevices
                 )
                 .accessibilityLabel(
                   L10n.text(device.name + " simülatörünü kapat", "Shut down " + device.name))
@@ -546,7 +550,17 @@ struct SimulatorsView: View {
           }
         }
       }.frame(maxHeight: .infinity).overlay {
-        if model.devices.isEmpty && !model.scanningDevices && model.simulatorError == nil {
+        if let issue = model.simulatorToolIssue, !model.scanningDevices {
+          ContentUnavailableView {
+            Label(L10n.text("Simülatör yönetimi kullanılamıyor", "Simulator management unavailable"), systemImage: "iphone.slash")
+          } description: {
+            Text(issue == .xcodeNotConfigured
+              ? L10n.text("Bu Mac’te Xcode geliştirici konumu ayarlanmamış. iOS geliştirmiyorsan Xcode kurmana gerek yok.", "No Xcode developer location is configured on this Mac. You do not need Xcode if you are not developing for iOS.")
+              : L10n.text("Seçili geliştirici konumu simülatör aracını içermiyor. Yalnızca Command Line Tools kurulumu yeterli değil. Xcode kuruluysa Settings → Locations → Command Line Tools alanından Xcode’u seç.", "The selected developer location does not include the simulator tool. Command Line Tools alone is not sufficient. If Xcode is installed, select it in Settings → Locations → Command Line Tools."))
+          } actions: {
+            Link(L10n.text("Xcode gereksinimlerini öğren", "About Xcode requirements"), destination: URL(string: "https://developer.apple.com/documentation/xcode/xcode-command-line-tool-reference")!)
+          }
+        } else if model.devices.isEmpty && !model.scanningDevices && model.simulatorError == nil {
           Text(L10n.text("Açık cihaz bulunamadı.", "No running devices found.")).foregroundStyle(
             .secondary)
         }
@@ -558,12 +572,14 @@ struct SimulatorsView: View {
           EventStatus(event: event)
         }
       }
-      Text(
-        L10n.text(
-          "Seçilen sanal cihaz kapanır; içindeki uygulama ve devam eden testler kesilir. Diğer cihazlar açık kalır. Sonucu burada görebilirsin.",
-          "The selected virtual device shuts down, interrupting its apps and running tests. Other devices stay open. The result appears here."
-        )
-      ).font(.caption).foregroundStyle(.secondary)
+      if !model.devices.isEmpty && model.simulatorError == nil {
+        Text(
+          L10n.text(
+            "Seçilen sanal cihaz kapanır; içindeki uygulama ve devam eden testler kesilir. Diğer cihazlar açık kalır. Sonucu burada görebilirsin.",
+            "The selected virtual device shuts down, interrupting its apps and running tests. Other devices stay open. The result appears here."
+          )
+        ).font(.caption).foregroundStyle(.secondary)
+      }
       HStack {
         Spacer()
         Button(L10n.text("Kapat", "Close")) { dismiss() }.keyboardShortcut(.cancelAction)

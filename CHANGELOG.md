@@ -1,5 +1,13 @@
 # AgenticClean changelog
 
+## 0.7.3 — simulator availability fix
+
+- Check the selected developer directory and executable before reading or shutting down iOS simulators; never invoke the xcrun installer shim.
+- Show a Turkish/English Xcode setup state instead of a raw command error on Macs without simulator tools.
+- Keep unexpected runtime errors in technical details and clear stale device lists after failed refresh.
+- Cover missing Xcode, Command Line Tools, custom Xcode locations, runtime failure and invalid device identity with regression tests.
+
+
 ## 0.7.2 — project disk workspace alpha
 
 - Measure logical project disk usage with explicit background scan/cancel, nested-root exclusion, worktree locations and complete/partial/inaccessible/cancelled states.

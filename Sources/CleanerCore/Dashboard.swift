@@ -159,6 +159,7 @@ extension MonitorEngine: SnapshotSource {}
   public var paused = false { didSet { if paused != oldValue && running { restart() } } }
   public private(set) var devices: [SimulatorDevice] = []
   public private(set) var simulatorError: String?
+  public private(set) var simulatorToolIssue: SimulatorToolIssue?
   public private(set) var scanningDevices = false
   public private(set) var pendingDevices = Set<String>()
   public private(set) var pendingProjects = Set<String>()
@@ -499,7 +500,12 @@ extension MonitorEngine: SnapshotSource {}
     do {
       devices = try await SimulatorControl.devices()
       simulatorError = nil
-    } catch { simulatorError = error.localizedDescription }
+      simulatorToolIssue = nil
+    } catch {
+      devices = []
+      simulatorToolIssue = error as? SimulatorToolIssue
+      simulatorError = error.localizedDescription
+    }
   }
   public func shutdown(_ device: SimulatorDevice) async {
     guard pendingDevices.insert(device.id).inserted else { return }
