@@ -45,168 +45,12 @@ struct ProjectStopView: View {
   }
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      Text(
-        showingResults
-          ? (plan.mode == .managedHelpers
-            ? L10n.text("Yardımcı süreç durdurma sonucu", "Helper stop results")
-            : L10n.text("Proje durdurma sonucu", "Project stop results"))
-          : plan.targets.isEmpty
-            ? (plan.helperEntries.isEmpty
-              ? L10n.text("Bu projede durdurulabilecek iş bulunmuyor", "No tasks in this project can be stopped")
-              : L10n.text("Codex yardımcılarını ayrı incele", "Review Codex helpers separately"))
-            : L10n.text("Projenin \(plan.targets.count) işini durdur?", "Stop \(plan.targets.count) tasks in this project?")
-      )
-      .font(.title2.bold())
-      VStack(alignment: .leading, spacing: 5) {
-        Text(plan.request.mode == .projects ? plan.name : "\(plan.application) · \(plan.name)")
-          .font(.headline)
-        Text(plan.path).font(.caption).foregroundStyle(AgenticPalette.secondaryText).textSelection(.enabled)
-        Text(
-          showingResults
-            ? resultSummary
-            : L10n.text(
-              "\(plan.targets.count) proje işi · \(plan.helperEntries.count) yardımcı ayrı onay bekliyor · \(excludedCount) kapsam dışında",
-              "\(plan.targets.count) project tasks · \(plan.helperEntries.count) helpers need separate approval · \(excludedCount) excluded")
-        )
-        .font(.callout.weight(.medium))
-        .accessibilityIdentifier(showingResults ? "project.results" : "project.summary")
-      }
-      if !showingResults && !plan.targets.isEmpty {
-        Text(
-          L10n.text(
-            "Listede AI oturumu varsa yanıt üretimi ve devam eden işler kesilir. Sunuculara bağlı önizlemeler kapanabilir. Yalnızca aşağıda onayladığın süreçlere kapatma isteği gönderilir; sonuç 15 saniye kontrol edilir.",
-            "An AI session in this list will stop generating responses and running work. Server previews may stop. Only the processes reviewed below receive a stop request; results are checked for 15 seconds."
-          )
-        )
-        .font(.callout)
-        if !plan.request.query.isEmpty {
-          Text(
-            L10n.text(
-              "Arama açık: yalnızca bu listede görünen eşleşmeler durdurulacak.",
-              "Search is active: only the matching processes shown here will be stopped.")
-          )
-          .font(.callout).foregroundStyle(.orange)
-        }
-      }
-      ScrollView {
-        LazyVStack(alignment: .leading, spacing: 16) {
-          if !showingResults && !plan.helperEntries.isEmpty {
-            helperReview
-          }
-          if excludedCount > 0 {
-            VStack(alignment: .leading, spacing: 12) {
-              Label(L10n.text("Kapatma isteği gönderilmeyecek", "No stop request will be sent"), systemImage: "lock.shield")
-                .font(.headline)
-              Text(L10n.text("\(excludedCount) süreç · nedenlere göre gruplandı. Süreçleri görmek için bir grubu aç.", "\(excludedCount) processes · grouped by reason. Expand a group to see its processes."))
-                .font(.caption).foregroundStyle(AgenticPalette.secondaryText)
-              ForEach(excludedGroups.keys.sorted(), id: \.self) { reason in
-                DisclosureGroup {
-                  ForEach(excludedGroups[reason] ?? []) { entry in
-                    processRow(entry).padding(.vertical, 5)
-                  }
-                } label: {
-                  HStack(alignment: .top, spacing: 10) {
-                    Text("\(excludedGroups[reason]?.count ?? 0)")
-                      .font(.callout.bold()).monospacedDigit()
-                      .padding(.horizontal, 8).padding(.vertical, 4)
-                      .background(AgenticPalette.field, in: Capsule())
-                    Text(L10n.core(reason)).font(.callout).fixedSize(horizontal: false, vertical: true)
-                  }
-                }
-                Divider()
-              }
-            }.padding(16).background(AgenticPalette.surface, in: RoundedRectangle(cornerRadius: 10))
-          }
-          if !plan.targets.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-              Label(showingResults ? L10n.text("İşlem sonuçları", "Action results") : L10n.text("Durdurulacak işler", "Tasks to stop"),
-                    systemImage: showingResults ? "checklist" : "stop.circle")
-                .font(.headline)
-              ForEach(plan.entries.filter { $0.exclusion == nil }) { entry in
-                processRow(entry)
-                Divider()
-              }
-            }.padding(16).background(AgenticPalette.list, in: RoundedRectangle(cornerRadius: 10))
-          }
-        }
-      }
-      if let error { Text(error).font(.callout).foregroundStyle(.orange).accessibilityLabel(error) }
-      if running || refreshing {
-        HStack {
-          ProgressView().controlSize(.small)
-          Text(
-            running
-              ? L10n.text("Kapanma sonuçları kontrol ediliyor…", "Checking stop results…")
-              : L10n.text("Güncel liste alınıyor…", "Refreshing the list…"))
-        }
-      } else if submitted {
-        if let result = model.projectResults.first(where: { $0.id == plan.id }) {
-          VStack(alignment: .leading, spacing: 4) {
-            Text(
-              L10n.text("Ölçülen bellek: ", "Measured memory: ") + Format.bytes(result.beforeMemory)
-                + " → " + Format.bytes(result.afterMemory) + (result.incompleteMemory ? " *" : ""))
-            if let count = result.replacementCount {
-              Text(
-                L10n.text(
-                  "İşlem sonrası aynı konumda \(count) yeni süreç görüldü.",
-                  "\(count) new processes at the same location were observed after the action."))
-            } else {
-              Text(
-                L10n.text(
-                  "İşlem sonrası yeni süreç kontrolü doğrulanamadı.",
-                  "New-process detection could not be verified after the action."))
-            }
-            Text(
-              L10n.text(
-                "Bu fark hızlanma kanıtı değildir. * Eksik ölçümler toplamda yok.",
-                "This change does not prove a speed improvement. * Missing measurements are excluded."
-              )
-            )
-            .foregroundStyle(AgenticPalette.secondaryText)
-          }.font(.caption)
-        }
-        Text(
-          L10n.text(
-            "Sonuçlar, uygulamadan çıkana kadar Bu oturumdaki işlemler bölümünde görünür. Kapanan bir süreç yeniden başlayabilir; güncel durumu ana listeden kontrol edebilirsin.",
-            "Results appear in This session’s operations until you quit the app. A closed process may restart; check the main list for its current state."
-          )
-        )
-        .font(.caption).foregroundStyle(AgenticPalette.secondaryText)
-      }
-      HStack {
-        Button(submitted || (plan.targets.isEmpty && plan.helperEntries.isEmpty) ? L10n.text("Kapat", "Close") : L10n.text("Vazgeç", "Cancel")) {
-          dismiss()
-        }
-        .keyboardShortcut(.cancelAction).disabled(running || refreshing)
-        .accessibilityIdentifier("project.dismiss")
-        Spacer()
-        if !submitted {
-          if model.paused {
-            Button(L10n.text("Ölçüme devam et", "Resume monitoring")) { model.paused = false }
-          }
-          Button(L10n.text("Listeyi yenile", "Refresh list")) { refreshPlan() }
-            .disabled(running || refreshing || model.paused)
-            .accessibilityIdentifier("project.refresh")
-          if !plan.targets.isEmpty {
-          TimelineView(.periodic(from: .now, by: 1)) { _ in
-            VStack(alignment: .trailing, spacing: 4) {
-              if let reason = model.projectStopBlockReason(plan) {
-                Text(L10n.core(reason))
-                .font(.caption).foregroundStyle(AgenticPalette.secondaryText)
-              }
-              Button(
-                L10n.text(
-                  "\(plan.targets.count) süreci durdur", "Stop \(plan.targets.count) processes"),
-                role: .destructive
-              ) {
-                submit()
-              }.disabled(running || refreshing || !model.canConfirmProjectStop(plan))
-                .accessibilityIdentifier("project.stop")
-            }
-          }
-          }
-        }
-      }
+      header
+      projectDetails
+      stopExplanation
+      processList
+      operationStatus
+      actionBar
     }.padding(24).frame(width: 680, height: 620)
     .alert(
       L10n.text("Seçilen Codex yardımcıları durdurulsun mu?", "Stop the selected Codex helpers?"),
@@ -227,6 +71,194 @@ struct ProjectStopView: View {
     }
     .onChange(of: running || refreshing) { _, value in
       setPanelBusy(value)
+    }
+  }
+  private var headerTitle: String {
+    if showingResults {
+      return plan.mode == .managedHelpers
+        ? L10n.text("Yardımcı süreç durdurma sonucu", "Helper stop results")
+        : L10n.text("Proje durdurma sonucu", "Project stop results")
+    }
+    if plan.targets.isEmpty {
+      return plan.helperEntries.isEmpty
+        ? L10n.text("Bu projede durdurulabilecek iş bulunmuyor", "No tasks in this project can be stopped")
+        : L10n.text("Codex yardımcılarını ayrı incele", "Review Codex helpers separately")
+    }
+    return L10n.text(
+      "Projenin \(plan.targets.count) işini durdur?",
+      "Stop \(plan.targets.count) tasks in this project?")
+  }
+  private var header: some View {
+    Text(headerTitle).font(.title2.bold())
+  }
+  private var projectDetails: some View {
+    VStack(alignment: .leading, spacing: 5) {
+      Text(plan.request.mode == .projects ? plan.name : "\(plan.application) · \(plan.name)")
+        .font(.headline)
+      Text(plan.path).font(.caption).foregroundStyle(AgenticPalette.secondaryText).textSelection(.enabled)
+      Text(
+        showingResults
+          ? resultSummary
+          : L10n.text(
+            "\(plan.targets.count) proje işi · \(plan.helperEntries.count) yardımcı ayrı onay bekliyor · \(excludedCount) kapsam dışında",
+            "\(plan.targets.count) project tasks · \(plan.helperEntries.count) helpers need separate approval · \(excludedCount) excluded")
+      )
+      .font(.callout.weight(.medium))
+      .accessibilityIdentifier(showingResults ? "project.results" : "project.summary")
+    }
+  }
+  @ViewBuilder
+  private var stopExplanation: some View {
+    if !showingResults && !plan.targets.isEmpty {
+      Text(
+        L10n.text(
+          "Listede AI oturumu varsa yanıt üretimi ve devam eden işler kesilir. Sunuculara bağlı önizlemeler kapanabilir. Yalnızca aşağıda onayladığın süreçlere kapatma isteği gönderilir; sonuç 15 saniye kontrol edilir.",
+          "An AI session in this list will stop generating responses and running work. Server previews may stop. Only the processes reviewed below receive a stop request; results are checked for 15 seconds."
+        )
+      )
+      .font(.callout)
+      if !plan.request.query.isEmpty {
+        Text(
+          L10n.text(
+            "Arama açık: yalnızca bu listede görünen eşleşmeler durdurulacak.",
+            "Search is active: only the matching processes shown here will be stopped.")
+        )
+        .font(.callout).foregroundStyle(.orange)
+      }
+    }
+  }
+  private var processList: some View {
+    ScrollView {
+      LazyVStack(alignment: .leading, spacing: 16) {
+        if !showingResults && !plan.helperEntries.isEmpty {
+          helperReview
+        }
+        excludedProcesses
+        targetProcesses
+      }
+    }
+  }
+  @ViewBuilder
+  private var excludedProcesses: some View {
+    if excludedCount > 0 {
+      VStack(alignment: .leading, spacing: 12) {
+        Label(L10n.text("Kapatma isteği gönderilmeyecek", "No stop request will be sent"), systemImage: "lock.shield")
+          .font(.headline)
+        Text(L10n.text("\(excludedCount) süreç · nedenlere göre gruplandı. Süreçleri görmek için bir grubu aç.", "\(excludedCount) processes · grouped by reason. Expand a group to see its processes."))
+          .font(.caption).foregroundStyle(AgenticPalette.secondaryText)
+        ForEach(excludedGroups.keys.sorted(), id: \.self) { reason in
+          DisclosureGroup {
+            ForEach(excludedGroups[reason] ?? []) { entry in
+              processRow(entry).padding(.vertical, 5)
+            }
+          } label: {
+            HStack(alignment: .top, spacing: 10) {
+              Text("\(excludedGroups[reason]?.count ?? 0)")
+                .font(.callout.bold()).monospacedDigit()
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(AgenticPalette.field, in: Capsule())
+              Text(L10n.core(reason)).font(.callout).fixedSize(horizontal: false, vertical: true)
+            }
+          }
+          Divider()
+        }
+      }.padding(16).background(AgenticPalette.surface, in: RoundedRectangle(cornerRadius: 10))
+    }
+  }
+  @ViewBuilder
+  private var targetProcesses: some View {
+    if !plan.targets.isEmpty {
+      VStack(alignment: .leading, spacing: 12) {
+        Label(showingResults ? L10n.text("İşlem sonuçları", "Action results") : L10n.text("Durdurulacak işler", "Tasks to stop"),
+              systemImage: showingResults ? "checklist" : "stop.circle")
+          .font(.headline)
+        ForEach(plan.entries.filter { $0.exclusion == nil }) { entry in
+          processRow(entry)
+          Divider()
+        }
+      }.padding(16).background(AgenticPalette.list, in: RoundedRectangle(cornerRadius: 10))
+    }
+  }
+  @ViewBuilder
+  private var operationStatus: some View {
+    if let error { Text(error).font(.callout).foregroundStyle(.orange).accessibilityLabel(error) }
+    if running || refreshing {
+      HStack {
+        ProgressView().controlSize(.small)
+        Text(
+          running
+            ? L10n.text("Kapanma sonuçları kontrol ediliyor…", "Checking stop results…")
+            : L10n.text("Güncel liste alınıyor…", "Refreshing the list…"))
+      }
+    } else if submitted {
+      if let result = model.projectResults.first(where: { $0.id == plan.id }) {
+        VStack(alignment: .leading, spacing: 4) {
+          Text(
+            L10n.text("Ölçülen bellek: ", "Measured memory: ") + Format.bytes(result.beforeMemory)
+              + " → " + Format.bytes(result.afterMemory) + (result.incompleteMemory ? " *" : ""))
+          if let count = result.replacementCount {
+            Text(
+              L10n.text(
+                "İşlem sonrası aynı konumda \(count) yeni süreç görüldü.",
+                "\(count) new processes at the same location were observed after the action."))
+          } else {
+            Text(
+              L10n.text(
+                "İşlem sonrası yeni süreç kontrolü doğrulanamadı.",
+                "New-process detection could not be verified after the action."))
+          }
+          Text(
+            L10n.text(
+              "Bu fark hızlanma kanıtı değildir. * Eksik ölçümler toplamda yok.",
+              "This change does not prove a speed improvement. * Missing measurements are excluded."
+            )
+          )
+          .foregroundStyle(AgenticPalette.secondaryText)
+        }.font(.caption)
+      }
+      Text(
+        L10n.text(
+          "Sonuçlar, uygulamadan çıkana kadar Bu oturumdaki işlemler bölümünde görünür. Kapanan bir süreç yeniden başlayabilir; güncel durumu ana listeden kontrol edebilirsin.",
+          "Results appear in This session’s operations until you quit the app. A closed process may restart; check the main list for its current state."
+        )
+      )
+      .font(.caption).foregroundStyle(AgenticPalette.secondaryText)
+    }
+  }
+  private var actionBar: some View {
+    HStack {
+      Button(submitted || (plan.targets.isEmpty && plan.helperEntries.isEmpty) ? L10n.text("Kapat", "Close") : L10n.text("Vazgeç", "Cancel")) {
+        dismiss()
+      }
+      .keyboardShortcut(.cancelAction).disabled(running || refreshing)
+      .accessibilityIdentifier("project.dismiss")
+      Spacer()
+      if !submitted {
+        if model.paused {
+          Button(L10n.text("Ölçüme devam et", "Resume monitoring")) { model.paused = false }
+        }
+        Button(L10n.text("Listeyi yenile", "Refresh list")) { refreshPlan() }
+          .disabled(running || refreshing || model.paused)
+          .accessibilityIdentifier("project.refresh")
+        if !plan.targets.isEmpty {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+          VStack(alignment: .trailing, spacing: 4) {
+            if let reason = model.projectStopBlockReason(plan) {
+              Text(L10n.core(reason))
+              .font(.caption).foregroundStyle(AgenticPalette.secondaryText)
+            }
+            Button(
+              L10n.text(
+                "\(plan.targets.count) süreci durdur", "Stop \(plan.targets.count) processes"),
+              role: .destructive
+            ) {
+              submit()
+            }.disabled(running || refreshing || !model.canConfirmProjectStop(plan))
+              .accessibilityIdentifier("project.stop")
+          }
+        }
+        }
+      }
     }
   }
   private var helperReview: some View {
