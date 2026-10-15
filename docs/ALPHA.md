@@ -1,21 +1,21 @@
-# AgenticClean v0.7.4-alpha.1
+# AgenticClean v0.7.6-alpha.1
 
 Early access, macOS only. MIT licensed. The release includes an Apple Silicon ZIP signed with Developer ID and notarized by Apple.
 
 ## What is included
 
-- CPU, memory pressure and swap charts in Overview and Projects; descending resource sorting.
+- CPU, memory pressure and swap charts in Overview and Projects; live readings with fixed inspection order, pending new tasks and explicit re-sorting.
 - Verified project links separated from application/shared services, macOS components and unassigned development work.
 - Explicit process/project stop review with identity checks and shared-service exclusions.
 - Ollama/LM Studio loopback inventory and reviewed model unload; read-only llama.cpp slot inspection.
-- Explicit Docker Desktop container inspection/stop and simulator shutdown.
+- Explicit Docker Desktop container inspection/stop and simulator shutdown. All-device simulator storage inventory, unchecked reviewed selections, and separate permanent erase/delete actions with per-device preflight and results.
 - Project disk workspace with explicit background scans, category distribution and persisted folder bookmarks.
 - Trash-only cleanup of verified Xcode Build, Next.js cache and Vite dependency cache outputs, with activity/identity/preview checks.
 - Turkish and English UI, no telemetry or chat database access.
 
 ## Validation and limits
 
-For v0.7.4-alpha.1 on 2026-10-15, 179 core tests passed locally. Release-source CI passed the core suite, release build, source export and all six native XCUITest journeys. CI reports 179 tests with the optional installed-vendor integration skipped when Codex is absent; the always-on test-owned native SIGTERM fixture passes. Native fixture actions are synthetic. These checks do not establish another physical Mac or minimum-OS compatibility.
+For v0.7.6-alpha.1 on 2026-10-15, [release-source CI](https://github.com/ratipcan-uysal/AgenticClean/actions/runs/38793279585) passed all 200 core tests, the release build and all eleven native XCUITest journeys on Xcode 26.2 / Swift 6.2. Twelve new simulator-storage regressions and four new simulator UI journeys are included. Destructive simulator UI actions use a synthetic simctl transport; no real simulator was erased or deleted. The real 40-device inventory and shutdown-only filtering were checked locally. Local redundant compile attempts were aborted on the slow host; the complete suite result above is CI evidence.
 
 On 2026-10-12, all 152 tests passed on the local Apple Silicon development Mac (17.054 seconds test execution, excluding compilation). This includes project disk scanning and the three cleanup providers. The suite includes memory-pressure timeline and work-explanation/episode regression coverage. This does not substitute for hardware or usability validation.
 
@@ -42,3 +42,14 @@ Separately reviewed Codex helpers, installation-independent vendor signature che
 Application source: `5a6a2baa1b392c2641b77a230f1144a785916ce8`, merged to main in `cbd80435ddc75cd5ed3c91bd1e1a258b0c8ff15c`. [Release-source CI passed](https://github.com/ratipcan-uysal/AgenticClean/actions/runs/38723785322). The clean arm64 build `5a6a2ba-20261015T105833Z` was Developer ID signed, accepted by Apple notarization (submission `96d4ec79-d41d-4ac5-914f-b735cb1b7329`) and stapled. Final ZIP extraction, strict signatures, ticket validation, Gatekeeper and checksum checks passed on the development Mac.
 
 [Download v0.7.4-alpha.1](https://github.com/ratipcan-uysal/AgenticClean/releases/tag/v0.7.4-alpha.1). Second physical Mac installation remains unverified; this is an alpha, not a compatibility certification.
+
+
+## v0.7.6-alpha.1 verification
+
+Application source is PR head `a6e7854e02ead6db20e17af5a3b98a81953c9dd7`, merged to main in `43a22277994e366e2b28ee657a0ecf8e5d21624a`. The arm64 CI build `50b302a-20261015T192452Z` came from the tested integration commit; all 95 curated source files were matched to the public branch before signing. Later release-documentation changes do not change application source.
+
+Developer ID signing with hardened runtime and timestamp passed. Apple accepted notarization submission `b482b90b-e46f-443d-9a2a-6e037351d8a4`; staple validation, strict signatures and Gatekeeper assessment passed. The final ZIP SHA256 is `24adc8191fea4974f8bc22d82a6ab9a8fe81fd2099c446c99318a2244c9b2d55`.
+
+[Download v0.7.6-alpha.1](https://github.com/ratipcan-uysal/AgenticClean/releases/tag/v0.7.6-alpha.1). Device sizes exclude shared iOS runtimes and are not guaranteed recoverable space. Shutdown does not establish that a device is unused. Erase/delete permanently remove device data and cannot be restored from Trash; no devices start selected.
+
+Second physical Mac installation, minimum-OS compatibility, comprehensive VoiceOver and participant usability validation remain unverified.

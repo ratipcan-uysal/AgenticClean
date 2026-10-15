@@ -1,6 +1,6 @@
 # AgenticClean
 
-> **Alpha — v0.7.4-alpha.1.** An Apple Silicon (M-series) ZIP is available for early testers, signed with Developer ID and notarized by Apple. This is not a general-availability release or a claim of compatibility with every Mac.
+> **Alpha — v0.7.6-alpha.1.** An Apple Silicon (M-series) ZIP is available for early testers, signed with Developer ID and notarized by Apple. This is not a general-availability release or a claim of compatibility with every Mac.
 >
 > **Supported:** macOS resource monitoring, evidence-based project links, reviewed manual stopping, local AI service inspection, and project disk measurement and Trash-only cleanup of verified Xcode/Next.js/Vite outputs.
 >
@@ -12,7 +12,7 @@ Free, open-source, native macOS menu bar app. [Türkçe](README.md) · [MIT lice
 
 ## Download and install
 
-Download `AgenticClean-0.7.4-arm64.zip` from the [alpha release](https://github.com/ratipcan-uysal/AgenticClean/releases/tag/v0.7.4-alpha.1), unzip it, and move `AgenticClean.app` to Applications. Open it and use its menu bar item. Targets macOS 14+; no Intel binary is provided. Installation on a second physical Mac has not yet been validated. No terminal script is required.
+Download `AgenticClean-0.7.6-arm64.zip` from the [alpha release](https://github.com/ratipcan-uysal/AgenticClean/releases/tag/v0.7.6-alpha.1), unzip it, and move `AgenticClean.app` to Applications. Open it and use its menu bar item. Targets macOS 14+; no Intel binary is provided. Installation on a second physical Mac has not yet been validated. No terminal script is required.
 
 ## Scan → review → confirm → see results
 
@@ -28,7 +28,7 @@ Codex, Claude Code and Cursor process/project inspection is supported. Their cha
 
 Close the window to keep monitoring from the menu bar; reopen it through AgenticClean’s menu. Choose **Quit AgenticClean** to stop the app. Settings offer Turkish/English and scan frequency. Preferences persist; process selection does not. In the focused list, use arrows to navigate and expand/collapse, Enter or Space to toggle a branch. Details appear beside a selected process. Overview includes small CPU and memory-pressure histories; detailed charts open separately.
 
-**Inspecting the list (0.7.5 source version):** Measurements update while row order, expanded groups and selection stay fixed. New tasks wait behind a counter. **Re-sort** adds them, removes missing rows and ranks current values. Changing Memory/CPU/Age, search or filters also rebuilds the list. A retained row that no longer matches a live threshold keeps its current readings until the next sort. Missing rows show closure only after identity verification, and their old readings do not enter live totals.
+**Inspecting the list:** Measurements update while row order, expanded groups and selection stay fixed. New tasks wait behind a counter. **Re-sort** adds them, removes missing rows and ranks current values. Changing Memory/CPU/Age, search or filters also rebuilds the list. A retained row that no longer matches a live threshold keeps its current readings until the next sort. Missing rows show closure only after identity verification, and their old readings do not enter live totals.
 
 ## What the numbers mean
 
@@ -69,7 +69,7 @@ Ollama and LM Studio loaded-model inventories and reviewed unload use verified l
 
 Docker supports the official Desktop installation and standard user-owned socket, explicit inventory and an exact-container SIGTERM with no forced escalation. No Docker volumes or model files are deleted. Native provider calls run only after an explicit inspection/action, never by scanning default ports or starting a disabled service.
 
-The candidate is locally ad-hoc signed. Public distribution still requires Developer ID signing, notarization, external macOS compatibility checks and participant usability validation. macOS is the only current platform target.
+Local builds are ad hoc signed. The public alpha ZIP is Developer ID-signed and notarized by Apple; external compatibility and participant usability validation remain pending. macOS is the only current platform target.
 
 
-**Simulator storage (0.7.6 source version):** The simulator panel's Disk space view lists every device, runtime, measured data and known/unknown last use. Disk Space links to the same review. Shutdown devices start unchecked. Erase contents keeps the device definition but permanently erases apps, data and settings; Delete devices permanently removes the device. Neither action is recoverable from Trash. Each exact UDID is checked again for identity and Shutdown state, with separate results. Another session's future intent cannot be verified. Sizes exclude shared iOS runtimes and do not promise recovered disk space. Closing the panel leaves a batch running; cancellation or quitting finishes the current device and skips the rest.
+**Simulator storage:** The simulator panel's Disk space view lists every device, runtime, measured data and known/unknown last use. Disk Space links to the same review. Shutdown devices start unchecked. Erase contents keeps the device definition but permanently erases apps, data and settings; Delete devices permanently removes the device. Neither action is recoverable from Trash. Each exact UDID is checked again for identity and Shutdown state, with separate results. Another session's future intent cannot be verified. Sizes exclude shared iOS runtimes and do not promise recovered disk space. Closing the panel leaves a batch running; cancellation or quitting finishes the current device and skips the rest.
