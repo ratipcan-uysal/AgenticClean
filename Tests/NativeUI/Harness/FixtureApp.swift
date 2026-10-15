@@ -19,7 +19,9 @@ actor FixtureWorld: SnapshotSource, ProjectProcessActions {
             Self.row(900003, helper: false)]
     try? Data("[]".utf8).write(to: logURL, options: .atomic)
   }
-  nonisolated private static func row(_ pid: Int32, helper: Bool) -> ProcessRow {
+  nonisolated private static func row(
+    _ pid: Int32, helper: Bool, megabytes: UInt64 = 8, cpu: Double = 0
+  ) -> ProcessRow {
     let path = helper
       ? "/SyntheticApps/VerifiedFixture.app/Contents/Resources/cua_node/bin/node"
       : "/synthetic/bin/python3"
@@ -27,11 +29,11 @@ actor FixtureWorld: SnapshotSource, ProjectProcessActions {
       id: ProcessIdentity(pid: pid, seconds: 1), parent: 1, uid: getuid(), path: path,
       memory: 8 * 1_048_576)
     sample.cwd = projectPath
-    sample.footprint = 8 * 1_048_576
+    sample.footprint = megabytes * 1_048_576
     // Internal, test-only identity construction; native production scans still require signatures.
     if helper { sample.managedHelperIdentity = ManagedHelperIdentity.candidate(for: path) }
     var row = ProcessRow(
-      sample: sample, cpu: 0, reasons: [], owner: "Codex",
+      sample: sample, cpu: cpu, reasons: [], owner: "Codex",
       project: ProjectHint(path: projectPath, sourcePID: pid, inherited: false,
                            hasProjectMarker: true))
     row.applicationKey = "fixture.codex"
@@ -51,6 +53,13 @@ actor FixtureWorld: SnapshotSource, ProjectProcessActions {
   }
   func resetBaseline() {}
   func setScanFailure(_ value: Bool) { failScan = value }
+  func changeReadings() {
+    rows = [Self.row(900001, helper: true, megabytes: 4, cpu: 20),
+            Self.row(900002, helper: true, megabytes: 64, cpu: 40),
+            Self.row(900003, helper: false),
+            Self.row(900004, helper: false, megabytes: 128)]
+  }
+  func removeFirstTask() { stopped.insert(rows[0].id) }
   func stop(_ sample: ProcessSample) throws { try record(sample, kind: "project") }
   func stop(_ sample: ProcessSample, projectPath: String) throws {
     guard projectPath == Self.projectPath else { throw MonitorError.message("Wrong fixture project") }
@@ -113,6 +122,9 @@ actor FixtureWorld: SnapshotSource, ProjectProcessActions {
       ("Pause monitoring", #selector(pauseMonitoring)),
       ("Resume monitoring", #selector(resumeMonitoring)),
       ("Fail scan", #selector(failScan)),
+      ("Show list", #selector(showList)),
+      ("Change readings", #selector(changeReadings)),
+      ("Remove first task", #selector(removeFirstTask)),
     ] {
       let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
       item.target = self
@@ -127,6 +139,13 @@ actor FixtureWorld: SnapshotSource, ProjectProcessActions {
   @objc private func resumeMonitoring() { model.paused = false }
   @objc private func failScan() {
     Task { await world.setScanFailure(true); await model.refresh() }
+  }
+  @objc private func showList() { model.selection = nil }
+  @objc private func changeReadings() {
+    Task { await world.changeReadings(); await model.refresh() }
+  }
+  @objc private func removeFirstTask() {
+    Task { await world.removeFirstTask(); await model.refresh() }
   }
   private func showWindow() {
     if window == nil {

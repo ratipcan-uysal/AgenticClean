@@ -21,6 +21,8 @@ Mac’inde çalışan işleri gör: bağımsız yerel AI sunucuları, geliştirm
 3. **Onayla:** Projenin **Durdur…** düğmesi kapatılacak ve açık kalacak süreçleri nedenleriyle gösterir. AI oturumu listedeyse devam eden iş kesilir. Paylaşılan veya bağlantısı bilinmeyen süreçler dahil edilmez.
 4. **Sonucu gör:** Kapandı, hâlâ çalışıyor, doğrulanamadı ve başarısız sonuçları ayrı gösterilir. Yeni eşleşen süreçler ve okunabilen önce/sonra bellek değerleri ayrıca sunulur; otomatik hızlanma iddiası yapılmaz.
 
+**Listeyi inceleme (0.7.5 kaynak sürümü):** Ölçümler güncellenirken satır sırası, açık gruplar ve seçim sabit kalır. Yeni işler sayaçta bekler; **Yeniden sırala** bunları ekler, kayıp satırları kaldırır ve güncel değerlere göre sıralar. Bellek/CPU/süre seçimini veya arama/filtreyi değiştirmek de listeyi yeniden kurar. Kayıp satırda kapanış yalnız kimlik kontrolüyle doğrulanır; eski ölçümler canlı toplamda kullanılmaz.
+
 **Disk alanı:** Projelerin mantıksal dosya boyutlarını tek çalışma alanında ölç, kaynak/bağımlılık/çıktı dağılımını incele; kapalı projeleri klasör seçerek ekle. Temizleme yalnızca doğrulanmış Xcode `DerivedData/<proje>/Build`, Next.js `.next/cache` ve Vite `node_modules/.vite` çıktılarında sunulur. Etkinlik, kimlik ve değişiklik kontrollerinden geçen çıktıları seçip onayladıktan sonra Çöp Sepeti’ne taşıyabilirsin. Bu, tüm disk analizi veya RAM temizliği değildir. AgenticClean Çöp Sepeti’ni boşaltmaz. [Tam kapsam ve korumalar](docs/CACHE-SCOPE.md).
 
 Codex, Claude Code ve Cursor için süreç/proje inceleme desteklenir; bu araçların sohbet, ayar, kimlik bilgisi veya doğrulanmamış önbellek klasörleri temizlenmez. SwiftPM `.build` içindeki değişmiş bağımlılık kaynakları da temizlik kapsamına alınmaz.
@@ -44,7 +46,7 @@ API erişim anahtarları, wildcard/harici dinleyiciler ve özel Docker konumlar�
 
 Derleyip yerel kurulum yaptıktan sonra `dist/AgenticClean.app` dosyasını aç. Bu çalışma klasöründeki `AgenticClean Aç.command` yalnızca yerel kısayoldur; herkese açık kaynak arşivine dahil değildir. Paneli kapatmak ölçümü durdurmaz; menü çubuğundaki AgenticClean’den tekrar aç. Tam çıkış için **AgenticClean’den çık**. Ana ekranın altındaki **Ayarlar → Language / Dil** alanından **Türkçe** veya **English** seçilebilir. Değişiklik anında uygulanır; aynı ekranda tarama aralığı da seçilebilir. Dil, tarama aralığı, sıralama ve grafik tercihi korunur; PID/seçim geri yüklenmez.
 
-Liste klavye odaktayken ok tuşlarıyla gezin, sağ/sol ile genişlet/daralt, Enter veya boşlukla dalı aç. Süreç seçilince ayrıntı sağda görünür. Arama/filtre görünür sonuçlardan çıkardığı sürecin işlem seçimini temizler.
+Liste klavye odaktayken ok tuşlarıyla gezin, sağ/sol ile genişlet/daralt, Enter veya boşlukla dalı aç. Süreç seçilince ayrıntı sağda görünür. Arama/filtreyi değiştirmek işlem seçimini temizler; otomatik tarama sırasında filtre eşiğinin altına inen görünür satır, güncel ölçümleriyle bir sonraki sıralamaya kadar kalır.
 
 ## Ölçümler ve sınırlar
 

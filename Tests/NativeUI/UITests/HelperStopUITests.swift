@@ -143,6 +143,47 @@ import XCTest
     try click("harness.project")
     try requireExists(app.checkBoxes["helpers.choice.900001"], "first helper checkbox")
   }
+  func testLiveReadingsKeepRowsAndExpandedProjectFixedUntilExplicitResort() throws {
+    defer { finishFixture() }
+    try prepareFixture()
+    try fixtureCommand("Show list")
+    let projects = app.buttons["Projects"]
+    try requireExists(projects, "Projects sidebar")
+    projects.click()
+    try click("group.row./synthetic/cleaner-native-ui-project")
+    // The narrow CI window shows the inspector; closing it returns to the
+    // still-expanded list without resetting its expansion or scroll identity.
+    let close = app.buttons["Close details"]
+    try requireExists(close, "Close group details")
+    close.click()
+    let first = element("process.row.900001")
+    let second = element("process.row.900002")
+    try requireExists(first, "first displayed process")
+    try requireExists(second, "second displayed process")
+    let firstY = first.frame.minY
+    let secondY = second.frame.minY
+    try fixtureCommand("Change readings")
+    try requireExists(element("list.pending"), "pending new-task count")
+    XCTAssertTrue(visibleText(element("list.pending")).contains("1 new"))
+    XCTAssertEqual(first.frame.minY, firstY, accuracy: 1)
+    XCTAssertEqual(second.frame.minY, secondY, accuracy: 1)
+    XCTAssertTrue(visibleText(first).contains("4 MB"), visibleText(first))
+    XCTAssertFalse(element("process.row.900004").exists)
+    try fixtureCommand("Remove first task")
+    let closed = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Closed", "Closed"),
+      object: first)
+    XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 8), .completed)
+    XCTAssertEqual(first.frame.minY, firstY, accuracy: 1)
+    XCTAssertEqual(second.frame.minY, secondY, accuracy: 1)
+    try assertNoActions()
+    try click("list.resort")
+    try requireExists(element("process.row.900004"), "new process after explicit re-sort")
+    XCTAssertFalse(first.exists)
+    XCTAssertFalse(element("list.pending").exists)
+    XCTAssertLessThan(element("process.row.900004").frame.minY, second.frame.minY)
+    try assertNoActions()
+  }
   private func checkboxState(_ checkbox: XCUIElement) throws -> Bool {
     let value = checkbox.value
     if let number = value as? NSNumber, [0, 1].contains(number.intValue) {

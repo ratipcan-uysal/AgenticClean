@@ -14,7 +14,6 @@ struct DashboardView: View {
   @FocusState private var listFocused: Bool
   @AppStorage("mainSection") private var section = "overview"
   @State private var diskModel = DiskWorkspaceModel()
-  @State private var sortNotice = false
   @State private var historyGroup: ResourceGroup?
   @State private var expanded = Set<String>()
   @State private var manualProjects: [ProcessIdentity: String] = [:]
@@ -286,15 +285,8 @@ struct DashboardView: View {
           Text("CPU").tag(SortOrder.cpu)
           Text(L10n.text("Süre", "Age")).tag(SortOrder.age)
         }.pickerStyle(.segmented).frame(width: 230)
-        Text(sortNotice
-          ? L10n.text("Sıralandı: ", "Sorted by: ") + L10n.text(model.request.sort.rawValue, model.request.sort == .memory ? "Memory" : model.request.sort == .cpu ? "CPU" : "Age")
-          : L10n.text("↓ Büyükten küçüğe", "↓ Highest first"))
+        Text(L10n.text("Son sıralama", "Last ranking"))
           .font(.caption2).foregroundStyle(AgenticPalette.secondaryText)
-      }
-      .onChange(of: model.request.sort) { _, _ in sortNotice = true }
-      .task(id: model.request.sort) {
-        guard sortNotice else { return }
-        do { try await Task.sleep(for: .seconds(3)); sortNotice = false } catch {}
       }
     }
   }
@@ -341,9 +333,38 @@ struct DashboardView: View {
     }.font(.caption).padding(12)
   }
   private var hiddenProjectContext: Bool { section == "projects" && !model.request.showProjectContext && model.presentation.projectContextCount > 0 }
+  private var listStatus: String {
+    if model.paused { return L10n.text("Ölçüm duraklatıldı · Sıra sabit", "Measurements paused · Fixed order") }
+    if model.scanError != nil { return L10n.text("Tarama başarısız · Sıra sabit", "Scan failed · Fixed order") }
+    if model.quality == .stale { return L10n.text("Ölçüm güncel değil · Sıra sabit", "Measurements stale · Fixed order") }
+    return L10n.text("Ölçümler canlı · Sıra sabit", "Live measurements · Fixed order")
+  }
+  private var listOrderControls: some View {
+    HStack(spacing: 10) {
+      Text(listStatus)
+        .font(.caption).foregroundStyle(AgenticPalette.secondaryText)
+        .accessibilityIdentifier("list.stableStatus")
+      Spacer(minLength: 4)
+      if model.list.pendingCount > 0 {
+        Text(L10n.text("\(model.list.pendingCount) yeni iş", "\(model.list.pendingCount) new tasks"))
+          .font(.caption.weight(.medium))
+          .accessibilityIdentifier("list.pending")
+      }
+      Button(L10n.text("Yeniden sırala", "Re-sort")) {
+        Task { await model.resortList() }
+      }
+      .accessibilityIdentifier("list.resort")
+      .disabled(model.snapshot == nil || model.preparing)
+      .help(L10n.text(
+        "Yeni işleri ekle, son taramada olmayanları kaldır ve güncel değerlere göre sırala.",
+        "Add new tasks, remove tasks missing from the latest scan and rank by current values."))
+    }
+    .padding(.horizontal, 16).padding(.vertical, 8).background(AgenticPalette.surface)
+  }
   private var processList: some View {
     ScrollViewReader { proxy in
       VStack(spacing: 0) {
+        listOrderControls
         HStack(spacing: WorkTableColumns.spacing) {
           Text(L10n.text("İş / proje", "Work / project")).frame(
             maxWidth: .infinity, alignment: .leading)
@@ -352,7 +373,7 @@ struct DashboardView: View {
           Text(L10n.text("Süre", "Age") + (model.request.sort == .age ? " ↓" : "")).frame(width: WorkTableColumns.age, alignment: .trailing)
         }.font(.caption.weight(.medium)).foregroundStyle(AgenticPalette.secondaryText)
           .padding(.horizontal, 16).padding(.vertical, 12).background(AgenticPalette.surface)
-        if model.presentation.rows.isEmpty && departedSelection == nil {
+        if model.list.presentation.rows.isEmpty && departedSelection == nil {
           VStack(spacing: 12) {
             ContentUnavailableView(
               model.scanning
@@ -391,8 +412,8 @@ struct DashboardView: View {
             // Once scrolled away, List can retain the user's visible process instead.
             Text(
               L10n.text(
-                "Canlı kullanım · ayrıntı ve işlemler için bir iş seç",
-                "Live usage · select work to inspect details and actions")
+                "Sabit sıra · ayrıntı ve işlemler için bir iş seç",
+                "Fixed order · select work to inspect details and actions")
             )
             .font(.caption).foregroundStyle(AgenticPalette.secondaryText)
             .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 5)
@@ -405,18 +426,18 @@ struct DashboardView: View {
               }.tag(Selection.process(row.id)).accessibilityElement(children: .combine)
             }
             if section == "projects" {
-              ForEach(model.presentation.groups.filter(\.isProject)) { project in
+              ForEach(model.list.presentation.groups.filter(\.isProject)) { project in
                 branchCell(project, key: project.id, depth: 0, subtitle: projectSubtitle(project))
                   .tag(Selection.group(project.id))
                 if isExpanded(project.id) {
-                  ForEach(ProcessTreeItem.ordered(project.rows)) { item in
+                  ForEach(model.list.tree(for: project)) { item in
                     processCell(item.row, depth: item.depth).tag(Selection.process(item.id))
                   }
                 }
               }
               if model.request.showProjectContext {
                 ForEach([1, 4, 2, 3], id: \.self) { category in
-                  let groups = model.presentation.groups.filter { !$0.isProject && $0.projectSection == category }
+                  let groups = model.list.presentation.groups.filter { !$0.isProject && $0.projectSection == category }
                   if !groups.isEmpty {
                     Section(projectSectionTitle(category)) {
                       ForEach(groups) { group in
@@ -433,7 +454,7 @@ struct DashboardView: View {
                 }
               }
             } else {
-              ForEach(model.presentation.workloads) { work in
+              ForEach(model.list.presentation.workloads) { work in
                 if let row = work.primary {
                   workloadCell(work, row: row).tag(Selection.process(row.id))
                 } else {
@@ -455,7 +476,6 @@ struct DashboardView: View {
           }.id(section).listStyle(.inset).scrollContentBackground(.hidden).background(AgenticPalette.list).accessibilityLabel(
             L10n.text("Çalışan işler ve projeler", "Running work and projects")
           )
-          .onChange(of: model.request.sort) { _, _ in proxy.scrollTo("cleaner-consumers-top", anchor: .top) }
           .focused($listFocused)
           .onKeyPress(.rightArrow) { navigateBranch(expand: true) }
           .onKeyPress(.leftArrow) { navigateBranch(expand: false) }
@@ -477,7 +497,7 @@ struct DashboardView: View {
           } label: {
             Label(L10n.text("En üste", "Back to top"), systemImage: "arrow.up.to.line")
           }.buttonStyle(.borderless).font(.caption)
-            .disabled(model.presentation.rows.isEmpty)
+            .disabled(model.list.presentation.rows.isEmpty)
         }.padding(.horizontal, 16).padding(.vertical, 8)
       }
     }
@@ -502,21 +522,21 @@ struct DashboardView: View {
             ?? L10n.text("Proje bağlantısı bulunamadı", "Project connection not found")
         )
         .font(.caption).foregroundStyle(AgenticPalette.secondaryText).lineLimit(1)
-        Text(
-          L10n.text(
-            "Çalışıyor · etkin iş durumu bilinmiyor", "Running · active task status unknown")
-        )
+        Text(missingStatus(row) ?? L10n.text(
+          "Çalışıyor · etkin iş durumu bilinmiyor", "Running · active task status unknown"))
         .font(.caption2).foregroundStyle(AgenticPalette.secondaryText)
       }.frame(maxWidth: .infinity, alignment: .leading)
-      quantities(cpu: row.cpu, memory: row.sample.footprint, age: row.sample.age)
+      quantities(cpu: row.cpu, memory: row.sample.footprint, age: row.sample.age,
+                 unavailable: model.list.missing.contains(row.id))
     }.padding(.vertical, 8).contentShape(Rectangle()).accessibilityElement(children: .combine)
+      .opacity(model.list.missing.contains(row.id) ? 0.55 : 1)
       .accessibilityIdentifier("process.row.\(row.id.pid)")
       .accessibilityHint(
         L10n.text(
           "İşi incele ve kullanılabilir işlemleri gör", "Inspect this work and available actions"))
   }
   private var departedSelection: ProcessRow? {
-    guard let row = model.selectedRow, !model.presentation.rows.contains(where: { $0.id == row.id })
+    guard let row = model.selectedRow, !model.list.presentation.rows.contains(where: { $0.id == row.id })
     else { return nil }
     return row
   }
@@ -533,7 +553,7 @@ struct DashboardView: View {
     model.selection = .group(key)
   }
   private func selectedBranch() -> String? {
-    guard case .group(let key) = model.selection, model.presentation.containsGroup(key) else {
+    guard case .group(let key) = model.selection, model.list.presentation.containsGroup(key) else {
       return nil
     }
     return key
@@ -550,13 +570,13 @@ struct DashboardView: View {
     }
     if !expand, case .process(let id) = model.selection {
       if section == "projects",
-        let group = model.presentation.groups.first(where: { $0.rows.contains { $0.id == id } })
+        let group = model.list.presentation.groups.first(where: { $0.rows.contains { $0.id == id } })
       {
         model.selection = .group(group.id)
         return .handled
       }
       if section == "overview",
-        let work = model.presentation.workloads.first(where: {
+        let work = model.list.presentation.workloads.first(where: {
           $0.primary == nil && $0.group.rows.contains { $0.id == id }
         })
       {
@@ -586,7 +606,9 @@ struct DashboardView: View {
           Text(groupTitle(group)).fontWeight(depth == 0 ? .semibold : .medium).lineLimit(1)
             .help(groupTitle(group))
           Text(
-            subtitle
+            (model.list.isMissing(group)
+              ? L10n.text("Son taramada yok · Yeniden sıralanana kadar tutuluyor",
+                          "Missing from latest scan · Kept until re-sort") : subtitle)
               + (group.missingMemoryCount == 0
                 ? ""
                 : L10n.text(
@@ -597,7 +619,8 @@ struct DashboardView: View {
         }.frame(maxWidth: .infinity, alignment: .leading)
         quantities(
           cpu: group.cpu, memory: group.memory, age: group.age,
-          missingCPU: group.missingCPUCount, missingMemory: group.missingMemoryCount, grouped: true)
+          missingCPU: group.missingCPUCount, missingMemory: group.missingMemoryCount,
+          grouped: true, unavailable: model.list.isMissing(group))
       }.padding(.leading, CGFloat(depth) * 22).padding(.vertical, depth == 0 ? 12 : 6)
         .background {
           if section == "projects" && depth == 0 {
@@ -607,6 +630,8 @@ struct DashboardView: View {
         }
         .contentShape(Rectangle())
     }.buttonStyle(.plain)
+      .opacity(model.list.isMissing(group) ? 0.55 : 1)
+      .accessibilityIdentifier("group.row.\(key)")
       .listRowSeparator(section == "projects" && depth == 0 ? .hidden : .automatic)
       .accessibilityLabel(
         groupTitle(group)
@@ -627,15 +652,29 @@ struct DashboardView: View {
       Image(systemName: depth > 0 ? "arrow.turn.down.right" : "terminal").foregroundStyle(AgenticPalette.secondaryText).frame(width: 20)
       VStack(alignment: .leading, spacing: 4) {
         Text(L10n.core(row.title)).lineLimit(1).help(L10n.core(row.title))
-        Text(WorkIdentityText.summary(row)).lineLimit(2).font(.caption).foregroundStyle(AgenticPalette.secondaryText)
+        Text(missingStatus(row) ?? WorkIdentityText.summary(row))
+          .lineLimit(2, reservesSpace: true).font(.caption).foregroundStyle(AgenticPalette.secondaryText)
       }.frame(maxWidth: .infinity, alignment: .leading)
-      quantities(cpu: row.cpu, memory: row.sample.footprint, age: row.sample.age)
+      quantities(cpu: row.cpu, memory: row.sample.footprint, age: row.sample.age,
+                 unavailable: model.list.missing.contains(row.id))
     }.padding(.leading, 44 + CGFloat(depth) * 14).padding(.vertical, 7).accessibilityElement(children: .combine)
+      .opacity(model.list.missing.contains(row.id) ? 0.55 : 1)
       .accessibilityIdentifier("process.row.\(row.id.pid)")
       .accessibilityHint(
         L10n.text(
           "İşlev, proje bağlantısı ve durdurma ayrıntılarını aç",
           "Open function, project connection, and stop details"))
+  }
+  private func missingStatus(_ row: ProcessRow) -> String? {
+    guard model.list.missing.contains(row.id) else { return nil }
+    switch model.list.presence[row.id] {
+    case .absent?, .differentIdentity?:
+      return L10n.text("Kapandı · Yeniden sıralanana kadar tutuluyor",
+                       "Closed · Kept until re-sort")
+    default:
+      return L10n.text("Son taramada yok · Kapanışı doğrulanamadı",
+                       "Missing from latest scan · Exit unverified")
+    }
   }
   private var memoryScale: Double {
     Double(ProcessInfo.processInfo.physicalMemory)
@@ -651,12 +690,13 @@ struct DashboardView: View {
   }
   private func quantities(
     cpu: Double?, memory: UInt64?, age: Double,
-    missingCPU: Int = 0, missingMemory: Int = 0, grouped: Bool = false
+    missingCPU: Int = 0, missingMemory: Int = 0, grouped: Bool = false,
+    unavailable: Bool = false
   ) -> some View {
     HStack(spacing: WorkTableColumns.spacing) {
       VStack(alignment: .trailing, spacing: 5) {
-        Text(Format.bytes(memory) + (missingMemory > 0 && memory != nil ? "*" : ""))
-        ResourceMeter(fraction: memory.map { Double($0) / max(1, memoryScale) }, color: AgenticPalette.accent)
+        Text(unavailable ? "—" : Format.bytes(memory) + (missingMemory > 0 && memory != nil ? "*" : ""))
+        ResourceMeter(fraction: unavailable ? nil : memory.map { Double($0) / max(1, memoryScale) }, color: AgenticPalette.accent)
       }.frame(width: WorkTableColumns.memory, alignment: .trailing)
         .help(
           L10n.text(
@@ -664,9 +704,9 @@ struct DashboardView: View {
             "Bar: share of physical RAM capacity. Searching does not change the scale.")
         )
       VStack(alignment: .trailing, spacing: 5) {
-        Text(Format.cpu(capacityCPU(cpu)) + (missingCPU > 0 && cpu != nil ? "*" : ""))
+        Text(unavailable ? "—" : Format.cpu(capacityCPU(cpu)) + (missingCPU > 0 && cpu != nil ? "*" : ""))
         ResourceMeter(
-          fraction: cpu.map { $0 / Double(ProcessInfo.processInfo.activeProcessorCount * 100) },
+          fraction: unavailable ? nil : cpu.map { $0 / Double(ProcessInfo.processInfo.activeProcessorCount * 100) },
           color: AgenticPalette.accent)
       }.frame(width: WorkTableColumns.cpu, alignment: .trailing)
         .help(
@@ -674,7 +714,7 @@ struct DashboardView: View {
             "Sayı ve çubuk: tüm işlemci kapasitesindeki pay.",
             "Number and bar: share of total CPU capacity."))
       VStack(alignment: .trailing, spacing: 3) {
-        Text(Format.age(age))
+        Text(unavailable ? "—" : Format.age(age))
         if grouped { Text(L10n.text("En eski", "Oldest")).font(.caption2).foregroundStyle(AgenticPalette.secondaryText) }
       }.frame(width: WorkTableColumns.age, alignment: .trailing)
 
@@ -713,8 +753,12 @@ struct DashboardView: View {
   }
   private var selectedGroup: ResourceGroup? {
     guard case .group(let key) = model.selection else { return nil }
-    if section == "projects" { return model.presentation.groups.first { $0.id == key } }
+    if section == "projects" {
+      return model.presentation.groups.first { $0.id == key }
+        ?? model.list.presentation.groups.first { $0.id == key }
+    }
     return model.presentation.workloads.first { $0.id == key }?.group
+      ?? model.list.presentation.workloads.first { $0.id == key }?.group
   }
   private func groupInspector(_ group: ResourceGroup) -> some View {
     VStack(spacing: 0) {
@@ -801,7 +845,8 @@ struct DashboardView: View {
         Button(L10n.text("Durdurmayı incele…", "Review stopping…")) {
           if let plan = model.projectStopPlan(for: group.id) { sheet = .project(plan) }
         }.buttonStyle(.borderedProminent).disabled(
-          model.pendingProjects.contains(group.id) || model.preparing).padding(16).frame(maxWidth: .infinity, alignment: .trailing)
+          model.pendingProjects.contains(group.id) || model.preparing
+            || model.projectStopPlan(for: group.id) == nil).padding(16).frame(maxWidth: .infinity, alignment: .trailing)
     }
     }.background(AgenticPalette.surface)
   }
@@ -824,7 +869,7 @@ struct DashboardView: View {
             Text("\(row.applicationName) · \(L10n.core(row.applicationComponent))").font(
               .caption
             ).foregroundStyle(AgenticPalette.secondaryText)
-            if !model.presentation.rows.contains(where: { $0.id == row.id }) {
+            if model.snapshot?.rows.contains(where: { $0.id == row.id }) != true {
               Label(presenceText, systemImage: "info.circle").foregroundStyle(AgenticPalette.warning)
             }
             Text(WorkIdentityText.summary(row)).font(.caption).foregroundStyle(AgenticPalette.secondaryText)

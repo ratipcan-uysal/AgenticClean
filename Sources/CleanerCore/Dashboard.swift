@@ -127,6 +127,7 @@ extension MonitorEngine: SnapshotSource {}
   public static let projectResultLimit = 50
   public private(set) var snapshot: Snapshot?
   public private(set) var presentation = Presentation()
+  public private(set) var list = StableList()
   public private(set) var history = HistoryBuffer()
   public private(set) var groupHistory = GroupHistoryBuffer()
   public private(set) var projectResults: [ProjectOperationResult] = []
@@ -140,6 +141,7 @@ extension MonitorEngine: SnapshotSource {}
   public var request = PresentationRequest() {
     didSet {
       guard request != oldValue else { return }
+      listResetPending = true
       defaults.set(request.mode.rawValue, forKey: "viewMode")
       defaults.set(request.sort.rawValue, forKey: "sortOrder")
       if request.query != oldValue.query || request.project != oldValue.project
@@ -174,6 +176,9 @@ extension MonitorEngine: SnapshotSource {}
   @ObservationIgnored private var loop: Task<Void, Never>?
   @ObservationIgnored private var preparation: Task<Void, Never>?
   @ObservationIgnored private var revision: UInt64 = 0
+  @ObservationIgnored private var listResetPending = true
+  @ObservationIgnored private var snapshotRevision: UInt64 = 0
+  @ObservationIgnored private var selectionProbe: Task<Void, Never>?
   @ObservationIgnored private var running = false
   @ObservationIgnored private var sleeping = false
   public init(
@@ -206,6 +211,7 @@ extension MonitorEngine: SnapshotSource {}
     running = false
     loop?.cancel()
     preparation?.cancel()
+    selectionProbe?.cancel()
     schedule.wake()
   }
   public func sleep() {
@@ -256,6 +262,8 @@ extension MonitorEngine: SnapshotSource {}
       let value = try await source.capture()
       guard epoch == schedule.epoch, !Task.isCancelled else { return }
       snapshot = value
+      snapshotRevision &+= 1
+      let sourceRevision = snapshotRevision
       scanError = nil
       if paused {
         history.gap(at: value.date)
@@ -264,10 +272,14 @@ extension MonitorEngine: SnapshotSource {}
         history.record(value)
         groupHistory.record(value)
       }
-      await applyPresentation(value)
-      if case .process(let id) = selection, !value.rows.contains(where: { $0.id == id }) {
-        let presence = await MonitorActions.presence(id)
-        if selection == .process(id) { selectedPresence = presence }
+      await applyPresentation(value, sourceRevision: sourceRevision)
+      if case .process(let id) = selection, !value.rows.contains(where: { $0.id == id }),
+        !list.missing.contains(id) {
+        let presence = await projectActions.presence(id)
+        if sourceRevision == snapshotRevision, selection == .process(id),
+          snapshot?.rows.contains(where: { $0.id == id }) == false {
+          selectedPresence = presence
+        }
       }
     } catch {
       guard epoch == schedule.epoch, !Task.isCancelled else { return }
@@ -281,41 +293,81 @@ extension MonitorEngine: SnapshotSource {}
     preparing = true
     preparation?.cancel()
     preparation = Task { [weak self] in
-      guard let self else { return }
+      guard let self, !Task.isCancelled else { return }
       if let snapshot = self.snapshot {
-        await self.applyPresentation(snapshot)
+        await self.applyPresentation(snapshot, sourceRevision: self.snapshotRevision)
       } else {
         self.preparing = false
       }
     }
   }
-  private func applyPresentation(_ value: Snapshot) async {
+  /// Explicitly adopts new members and today's ranking without pausing sampling.
+  public func resortList() async {
+    guard let snapshot else { return }
+    preparation?.cancel()
+    listResetPending = true
+    await applyPresentation(snapshot, sourceRevision: snapshotRevision)
+  }
+  private func applyPresentation(_ value: Snapshot, sourceRevision: UInt64) async {
+    guard sourceRevision == snapshotRevision, !Task.isCancelled else { return }
     revision &+= 1
     let ticket = revision
     let config = request
     preparing = true
     let result = await Presentation.prepare(value, request: config)
-    guard ticket == revision, config == request, !Task.isCancelled else { return }
+    guard ticket == revision, config == request, sourceRevision == snapshotRevision,
+      !Task.isCancelled else { return }
     presentation = result
+    list.update(result, snapshotRows: value.rows, reset: listResetPending)
+    listResetPending = false
     preparing = false
     if case .process(let id) = selection {
-      if let live = result.rows.first(where: { $0.id == id }) {
+      if let live = value.rows.first(where: { $0.id == id }),
+        list.row(id) != nil || result.rows.contains(where: { $0.id == id }) {
         selectedRow = live
         selectedPresence = .sameIdentity
       } else if value.rows.contains(where: { $0.id == id }) {
         selection = nil
       } else {
-        selectedPresence = .unreadable
+        if let known = list.presence[id] {
+          selectedPresence = known
+        } else if selectedPresence == .sameIdentity {
+          selectedPresence = .unreadable
+        }
       }  // Absence from one scan is not proof of exit.
-    } else if case .group(let id) = selection, !result.containsGroup(id) {
+    } else if case .group(let id) = selection, !result.containsGroup(id),
+      !list.presentation.containsGroup(id) {
       selection = nil
+    }
+    // Confirm disappearance by full PID/start identity; an unreadable scan is not
+    // an exit. Cached display rows never enter the live action presentation.
+    for id in list.missing {
+      if let known = list.presence[id] {
+        switch known { case .absent, .differentIdentity: continue; default: break }
+      }
+      let presence = await projectActions.presence(id)
+      guard ticket == revision, !Task.isCancelled else { return }
+      list.recordPresence(presence, for: id)
+      if selection == .process(id) { selectedPresence = presence }
     }
   }
   private func updateSelection() {
+    selectionProbe?.cancel()
     if case .process(let id) = selection, let row = presentation.rows.first(where: { $0.id == id })
     {
       selectedRow = row
       selectedPresence = .sameIdentity
+    } else if case .process(let id) = selection, let row = list.row(id) {
+      selectedRow = row
+      selectedPresence = snapshot?.rows.contains(where: { $0.id == id }) == true
+        ? .sameIdentity : list.presence[id] ?? .unreadable
+      selectionProbe = Task { [weak self, projectActions] in
+        let presence = await projectActions.presence(id)
+        guard let self, !Task.isCancelled, self.selection == .process(id),
+          self.list.missing.contains(id) else { return }
+        self.list.recordPresence(presence, for: id)
+        self.selectedPresence = presence
+      }
     } else {
       selectedRow = nil
       selectedPresence = .unreadable

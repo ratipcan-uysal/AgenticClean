@@ -2,7 +2,7 @@
 
 `./scripts/test-native-ui.sh` snapshots the current production `DashboardView`,
 `ProjectStopView`, `OperationsView` and their dependencies into an isolated XcodeGen
-project, compiles them unchanged, and runs six macOS XCUITests. The production app
+project, compiles them unchanged, and runs seven macOS XCUITests. The production app
 entry point is replaced by a **test-only app** (`local.cleaner.native-ui-harness.<unique-run>`).
 No test flags, fixture arguments or action overrides are added to the released app.
 
@@ -25,6 +25,8 @@ Covered journeys:
 5. Only the selected helper receives a synthetic stop; results remain in the current
    session's operation list; terminating and relaunching clears that list.
 6. Normal project stopping leaves managed helpers unchecked and untouched.
+7. Live measurements preserve row positions and expanded projects; new tasks wait for
+   explicit re-sorting, and verified departures remain visible without authorizing actions.
 
 Prerequisites: full Xcode selected with `xcode-select`, Swift 6.2 or later, XcodeGen
 (`brew install xcodegen`), Python 3, and a usable macOS GUI session with permission for
@@ -33,7 +35,7 @@ Xcode's UI test runner. Only one native GUI owner should run at a time.
 ```sh
 ./scripts/test-native-ui.sh --prepare-only # project/source manifest; no build or GUI
 ./scripts/test-native-ui.sh --build-only   # compile test bundle; no GUI execution
-./scripts/test-native-ui.sh                # compile and run all six GUI journeys
+./scripts/test-native-ui.sh                # compile and run all seven GUI journeys
 ```
 
 Evidence is saved in a unique ignored `dist/verification/native-ui-*` directory:
