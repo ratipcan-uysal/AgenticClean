@@ -1,6 +1,6 @@
 # AgenticClean
 
-> **Alpha — v0.7.3-alpha.1.** An Apple Silicon (M-series) ZIP is available for early testers, signed with Developer ID and notarized by Apple. This is not a general-availability release or a claim of compatibility with every Mac.
+> **Alpha — v0.7.4-alpha.1.** An Apple Silicon (M-series) ZIP is available for early testers, signed with Developer ID and notarized by Apple. This is not a general-availability release or a claim of compatibility with every Mac.
 >
 > **Supported:** macOS resource monitoring, evidence-based project links, reviewed manual stopping, local AI service inspection, and project disk measurement and Trash-only cleanup of verified Xcode/Next.js/Vite outputs.
 >
@@ -12,7 +12,7 @@ Free, open-source, native macOS menu bar app. [Türkçe](README.md) · [MIT lice
 
 ## Download and install
 
-Download `AgenticClean-0.7.3-arm64.zip` from the [alpha release](https://github.com/ratipcan-uysal/AgenticClean/releases/tag/v0.7.3-alpha.1), unzip it, and move `AgenticClean.app` to Applications. Open it and use its menu bar item. Targets macOS 14+; no Intel binary is provided. Installation on a second physical Mac has not yet been validated. No terminal script is required.
+Download `AgenticClean-0.7.4-arm64.zip` from the [alpha release](https://github.com/ratipcan-uysal/AgenticClean/releases/tag/v0.7.4-alpha.1), unzip it, and move `AgenticClean.app` to Applications. Open it and use its menu bar item. Targets macOS 14+; no Intel binary is provided. Installation on a second physical Mac has not yet been validated. No terminal script is required.
 
 ## Scan → review → confirm → see results
 
@@ -21,6 +21,8 @@ Download `AgenticClean-0.7.3-arm64.zip` from the [alpha release](https://github.
 - **Disk space** measures logical project sizes and source/dependency/output breakdowns in one workspace. Add closed projects with the folder picker. Cleanup supports verified Xcode `DerivedData/<project>/Build`, Next.js `.next/cache`, and Vite `node_modules/.vite` only. Select and review exact paths and rebuild effects; identity, changes and activity are checked again before moving to macOS Trash. This is not whole-disk analysis or RAM cleaning. AgenticClean never empties Trash. See [cleanup scope](docs/CACHE-SCOPE.md).
 - **Simulators** lists running Xcode devices and requires confirmation to shut down the selected device. Shared simulator daemons are never mass-terminated.
 - **History** shows system charts and app/project consumption. App/project history keeps the last 30 minutes, at least 15 seconds between samples, retaining the top 20 CPU and top 20 memory groups. Partial usage is dashed; the total may be higher. Entirely missing/omitted readings leave gaps, not zeroes. History stays in memory for the current session only.
+
+**Managed Codex helpers:** Review them separately from a process or project. Helpers start unchecked; a second impact approval includes only selected PIDs. Disabled actions explain their reason. Session operations retain 200 completed details and 50 project summaries in memory while preserving pending work; no operation history is written to disk. Simulator results stay compact, with collapsed history inside the device scroll area.
 
 Codex, Claude Code and Cursor process/project inspection is supported. Their chat, settings, credentials and unverified cache directories are not cleanup targets. SwiftPM dependency checkouts are not removed.
 

@@ -1,4 +1,4 @@
-# AgenticClean v0.7.3-alpha.1
+# AgenticClean v0.7.4-alpha.1
 
 Early access, macOS only. MIT licensed. The release includes an Apple Silicon ZIP signed with Developer ID and notarized by Apple.
 
@@ -14,6 +14,8 @@ Early access, macOS only. MIT licensed. The release includes an Apple Silicon ZI
 - Turkish and English UI, no telemetry or chat database access.
 
 ## Validation and limits
+
+For v0.7.4-alpha.1 on 2026-10-15, 179 core tests passed locally. Release-source CI passed the core suite, release build, source export and all six native XCUITest journeys. CI reports 179 tests with the optional installed-vendor integration skipped when Codex is absent; the always-on test-owned native SIGTERM fixture passes. Native fixture actions are synthetic. These checks do not establish another physical Mac or minimum-OS compatibility.
 
 On 2026-10-12, all 152 tests passed on the local Apple Silicon development Mac (17.054 seconds test execution, excluding compilation). This includes project disk scanning and the three cleanup providers. The suite includes memory-pressure timeline and work-explanation/episode regression coverage. This does not substitute for hardware or usability validation.
 
@@ -33,6 +35,10 @@ For v0.7.2-alpha.1, the app was built from `6b094a532ac885922ab088a838f867ae2c5a
 
 For v0.7.3-alpha.1, simulator availability is checked before executing simctl directly. Missing Xcode/CLT-only selections show setup guidance without invoking xcrun or installing tools. On 2026-10-14, 157 tests passed locally, macOS CI passed for application commit `6009602b5bf805048aeef477e55621db1d586aac`, and native unavailable-tool screens were checked in Turkish and English in an isolated test bundle. Apple notarization accepted `88e13dbc-4812-4efa-9655-8749d7ed38eb`; final ZIP extraction, signature, ticket, Gatekeeper and SHA256 checks passed. No real simulator was shut down; the reporting second Mac was not accessed.
 
-## Development candidate 0.7.4
+## v0.7.4-alpha.1 verification
 
-The working source adds separately reviewed Codex helpers, installation-independent vendor signature verification, visible disabled-action reasons, bounded in-memory session operations, and isolated native UI journeys. The downloadable alpha above remains 0.7.3 until an identified 0.7.4 artifact completes its own checks. Source/CI, signing, notarization and second-Mac installation are separate stages; see the release checks for the actual candidate.
+Separately reviewed Codex helpers, installation-independent vendor signature checks, visible disabled-action reasons, session-only bounded operations, and compact simulator history are included in this download.
+
+Application source: `5a6a2baa1b392c2641b77a230f1144a785916ce8`, merged to main in `cbd80435ddc75cd5ed3c91bd1e1a258b0c8ff15c`. [Release-source CI passed](https://github.com/ratipcan-uysal/AgenticClean/actions/runs/38723785322). The clean arm64 build `5a6a2ba-20261015T105833Z` was Developer ID signed, accepted by Apple notarization (submission `96d4ec79-d41d-4ac5-914f-b735cb1b7329`) and stapled. Final ZIP extraction, strict signatures, ticket validation, Gatekeeper and checksum checks passed on the development Mac.
+
+[Download v0.7.4-alpha.1](https://github.com/ratipcan-uysal/AgenticClean/releases/tag/v0.7.4-alpha.1). Second physical Mac installation remains unverified; this is an alpha, not a compatibility certification.
