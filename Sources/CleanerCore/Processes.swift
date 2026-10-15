@@ -19,6 +19,7 @@ public struct ProcessSample: Identifiable, Sendable {
   public var uid: UInt32
   public var path: String
   public var isMaestroMCP = false
+  var managedHelperIdentity: ManagedHelperIdentity?
   public var cpuTime: UInt64
   public var footprint: UInt64?
   public var diskIO: DiskIOCounters?
@@ -40,10 +41,13 @@ public struct ProcessSample: Identifiable, Sendable {
     self.memory = memory
   }
   public var isBundledCodexHelper: Bool {
-    let roots = ["/Applications/ChatGPT.app/Contents/Resources/", "/Applications/Codex.app/Contents/Resources/"]
-    return roots.contains { root in
-      ["cua_node/bin/node", "cua_node/bin/node_repl", "codex-cli/CodexCLI.app/Contents/MacOS/codex"].contains { path == root + $0 }
-    }
+    managedHelperIdentity?.executablePath == path
+  }
+  /// Only vendor-verified exact Node runtimes can be reviewed separately. The
+  /// coordinating executable and desktop app retain their normal protection.
+  public var allowsSeparateHelperStop: Bool {
+    infrastructureProtection == nil && isBundledCodexHelper
+      && managedHelperIdentity?.component.allowsSeparateStop == true
   }
   public var isDevelopment: Bool {
     [
@@ -56,7 +60,7 @@ public struct ProcessSample: Identifiable, Sendable {
   public var projectStopProtection: String? {
     if let protection = infrastructureProtection { return protection }
     if path.contains("/Application Support/Claude/") || path.contains("/CoreSimulator/") {
-      return "Aktif ajan uygulaması veya yönetilen yardımcı süreç"
+      return "Ajan uygulaması veya yönetilen yardımcı süreç; etkinliği doğrulanmadı"
     }
     if agentSession != nil { return nil }
     return protection
@@ -73,11 +77,14 @@ public struct ProcessSample: Identifiable, Sendable {
   }
   public var protection: String? {
     if let protection = infrastructureProtection { return protection }
+    if isBundledCodexHelper {
+      return "Ajan uygulaması veya yönetilen yardımcı süreç; etkinliği doğrulanmadı"
+    }
     if [
       "/Applications/ChatGPT.app/", "/Applications/Codex.app/", "/Applications/Claude.app/",
       "/Application Support/Claude/", "/CoreSimulator/",
     ].contains(where: path.contains) {
-      return "Aktif ajan uygulaması veya yönetilen yardımcı süreç"
+      return "Ajan uygulaması veya yönetilen yardımcı süreç; etkinliği doğrulanmadı"
     }
     if agentSession != nil { return "Ajan oturumu; yalnızca onaylı proje işlemiyle kapatılabilir" }
     if path.contains(".app/Contents/") { return "Uygulamayı kendi Çıkış menüsünden kapat" }
@@ -149,6 +156,9 @@ public struct ProcessRow: Identifiable, Sendable {
       : "Üst süreç zincirindeki uygulama veya süreç: \(owner). Bu bilgi bir proje veya sohbet eşleştirmesi değildir."
   }
   public var stopImpact: String {
+    if sample.allowsSeparateHelperStop {
+      return "Hangi Codex sohbetinin kullandığı bilinmiyor. Durdurursan bağlı araç çağrıları ve devam eden işler kesilebilir; yeniden bağlantı gerekebilir."
+    }
     if let agent = sample.agentSession {
       return
         "Durdurursan devam eden \(agent.name) AI kodlama oturumu ve araç çağrıları kesilir. Otomatik kaydedilmemiş çalışma kaybolabilir; oturumu yeniden başlatman gerekebilir."
@@ -174,6 +184,7 @@ public enum ProcessMonitor {
     var sample = ProcessSample(
       id: .init(pid: pid, seconds: raw.start_seconds, microseconds: raw.start_microseconds),
       parent: raw.parent, uid: raw.uid, path: path, cpuTime: raw.cpu_ns, memory: raw.resident)
+    sample.managedHelperIdentity = ManagedHelperIdentityResolver.shared.resolve(path: path)
     sample.footprint = raw.footprint_valid == 1 ? raw.footprint : nil
     if raw.disk_valid == 1 {
       sample.diskIO = DiskIOCounters(

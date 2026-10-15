@@ -391,7 +391,17 @@ struct SystemDetails: View {
 }
 struct EventStatus: View {
   let event: OperationEvent
+  var compact = false
   var body: some View {
+    if compact {
+      HStack(spacing: 8) {
+        Text(compactTitle).font(.caption.weight(.medium)).foregroundStyle(color)
+        Text(event.date.formatted(.dateTime.hour().minute().second().locale(L10n.locale)))
+          .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+      }.lineLimit(1).help(statusTitle)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(statusTitle + " · " + event.date.formatted(.dateTime.hour().minute().second().locale(L10n.locale)))
+    } else {
     VStack(alignment: .leading, spacing: 4) {
       Text(statusTitle).font(.callout.weight(.medium)).foregroundStyle(color)
       Text(event.date.formatted(.dateTime.hour().minute().second().locale(L10n.locale))).font(
@@ -402,6 +412,17 @@ struct EventStatus: View {
         Text(deviceID).font(.caption2).foregroundStyle(.secondary)
       }
     }.textSelection(.enabled).accessibilityElement(children: .combine)
+    }
+  }
+  private var compactTitle: String {
+    switch event.state {
+    case .requested: L10n.text("Kapatılıyor", "Shutting down")
+    case .closed: L10n.text("Kapandı", "Closed")
+    case .failed: L10n.text("Başarısız", "Failed")
+    case .unverified: L10n.text("Doğrulanamadı", "Unverified")
+    case .stillRunning: L10n.text("Hâlâ çalışıyor", "Still running")
+    case .modelUnloaded, .modelStillLoaded: statusTitle
+    }
   }
   private var statusTitle: String {
     switch event.state {
@@ -429,16 +450,18 @@ struct OperationsView: View {
   @Environment(\.closeCleanerPanel) private var dismiss
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      Text(L10n.text("İşlem geçmişi", "Operation history")).font(.title2.bold())
+      Text(L10n.text("Bu oturumdaki işlemler", "This session’s operations")).font(.title2.bold())
+        .accessibilityIdentifier("operations.title")
       Text(
         L10n.text(
-          "İşlem sonuçları tarama yenilendiğinde silinmez. Kapatılan kayıtlar ve uygulamadan çıkınca tüm geçmiş kaldırılır.",
-          "Refreshing does not clear operation results. Dismissed records are removed; quitting the app clears all history."
+          "Yalnızca bu oturum: en son \(Dashboard.completedEventLimit) tamamlanan işlem ve \(Dashboard.projectResultLimit) proje özeti bellekte tutulur. Devam eden işlemler korunur. Uygulamadan çıkınca kayıtlar silinir; diske geçmiş yazılmaz.",
+          "This session only: the latest \(Dashboard.completedEventLimit) completed operations and \(Dashboard.projectResultLimit) project summaries stay in memory. Ongoing operations are retained. Quitting clears all records; no history is written to disk."
         )
-      ).font(.caption).foregroundStyle(.secondary)
+      ).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("operations.sessionNotice")
       if model.events.isEmpty && model.projectResults.isEmpty {
         ContentUnavailableView(
           L10n.text("Henüz işlem yok", "No operations yet"), systemImage: "clock")
+          .accessibilityIdentifier("operations.empty")
       } else {
         ScrollView {
           LazyVStack(spacing: 12) {
@@ -498,6 +521,7 @@ struct OperationsView: View {
       HStack {
         Spacer()
         Button(L10n.text("Kapat", "Close")) { dismiss() }.keyboardShortcut(.cancelAction)
+          .accessibilityIdentifier("operations.dismiss")
       }
     }.padding(20).frame(width: 650, height: 430)
   }
@@ -506,6 +530,8 @@ struct SimulatorsView: View {
   @Bindable var model: Dashboard
   @Environment(\.closeCleanerPanel) private var dismiss
   @State private var target: SimulatorDevice?
+  @State private var historyExpanded = false
+  private var simulatorEvents: [OperationEvent] { model.events.filter { $0.simulatorID != nil } }
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
       HStack {
@@ -525,6 +551,10 @@ struct SimulatorsView: View {
       if model.scanningDevices { ProgressView(L10n.text("Cihazlar okunuyor…", "Reading devices…")) }
       ScrollView {
         LazyVStack(spacing: 12) {
+          if model.devices.isEmpty && !model.scanningDevices && model.simulatorError == nil && !simulatorEvents.isEmpty {
+            Label(L10n.text("Açık cihaz bulunamadı.", "No running devices found."), systemImage: "checkmark.circle")
+              .foregroundStyle(.secondary).padding(.vertical, 24)
+          }
           ForEach(model.devices) { device in
             VStack(alignment: .leading, spacing: 6) {
               HStack {
@@ -543,13 +573,32 @@ struct SimulatorsView: View {
               if let event = model.events.first(where: {
                 $0.simulatorID == device.id
               }) {
-                EventStatus(event: event)
+                EventStatus(event: event, compact: true)
               }
             }.padding(10).background(
               .quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
           }
-        }
-      }.frame(maxHeight: .infinity).overlay {
+          if !simulatorEvents.isEmpty {
+            DisclosureGroup(L10n.text("Son işlemler (\(simulatorEvents.count))", "Recent actions (\(simulatorEvents.count))"), isExpanded: $historyExpanded) {
+              LazyVStack(alignment: .leading, spacing: 10) {
+                ForEach(simulatorEvents) { event in
+                  VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                      Text(L10n.eventName(event.name)).font(.caption.weight(.medium))
+                        .lineLimit(1).help(event.name)
+                      Spacer(minLength: 8)
+                      EventStatus(event: event, compact: true)
+                    }
+                    DisclosureGroup(L10n.text("İşlem ayrıntıları", "Action details")) {
+                      EventStatus(event: event)
+                    }.font(.caption)
+                  }.padding(10).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
+                }
+              }.padding(.top, 8)
+            }.font(.callout).padding(.top, 8)
+          }
+        }.padding(.vertical, 2)
+      }.frame(maxHeight: .infinity).layoutPriority(1).overlay {
         if let issue = model.simulatorToolIssue, !model.scanningDevices {
           ContentUnavailableView {
             Label(L10n.text("Simülatör yönetimi kullanılamıyor", "Simulator management unavailable"), systemImage: "iphone.slash")
@@ -560,16 +609,17 @@ struct SimulatorsView: View {
           } actions: {
             Link(L10n.text("Xcode gereksinimlerini öğren", "About Xcode requirements"), destination: URL(string: "https://developer.apple.com/documentation/xcode/xcode-command-line-tool-reference")!)
           }
-        } else if model.devices.isEmpty && !model.scanningDevices && model.simulatorError == nil {
+        } else if model.devices.isEmpty && !model.scanningDevices && model.simulatorError == nil && simulatorEvents.isEmpty {
           Text(L10n.text("Açık cihaz bulunamadı.", "No running devices found.")).foregroundStyle(
             .secondary)
         }
       }
-      ForEach(model.events.filter { $0.process == nil }.prefix(3)) { event in
-        HStack {
-          Text(L10n.eventName(event.name)).font(.caption)
-          Spacer()
-          EventStatus(event: event)
+      if let event = simulatorEvents.first {
+        HStack(spacing: 8) {
+          Text(L10n.text("Son işlem:", "Latest action:")).font(.caption).foregroundStyle(.secondary)
+          Text(L10n.eventName(event.name)).font(.caption).lineLimit(1).help(event.name)
+          Spacer(minLength: 8)
+          EventStatus(event: event, compact: true)
         }
       }
       if !model.devices.isEmpty && model.simulatorError == nil {

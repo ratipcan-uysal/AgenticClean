@@ -18,6 +18,7 @@ private func treeRow(_ pid: Int32, _ parent: Int32, _ start: UInt64 = 1) -> Proc
 @Test func codexHelperRequiresExactBundledExecutablePath() {
   var sample = treeRow(1, 0).sample
   sample.path = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"
+  sample.managedHelperIdentity = ManagedHelperIdentity.candidate(for: sample.path)
   #expect(sample.isBundledCodexHelper)
   sample.path = "/Users/test/project/node"
   #expect(!sample.isBundledCodexHelper)
