@@ -13,7 +13,7 @@ struct DashboardView: View {
   var languageChanged: () -> Void = {}
   @FocusState private var listFocused: Bool
   @AppStorage("mainSection") private var section = "overview"
-  @State private var diskModel = DiskWorkspaceModel()
+  @State private var diskModel: DiskWorkspaceModel
   @State private var historyGroup: ResourceGroup?
   @State private var expanded = Set<String>()
   @State private var manualProjects: [ProcessIdentity: String] = [:]
@@ -22,6 +22,11 @@ struct DashboardView: View {
   @State private var sheet: DashboardSheet?
   @State private var detailWindow = DetailWindowPresenter()
   @AppStorage("cleanerLanguage") private var language = "tr"
+
+  init(model: Dashboard, languageChanged: @escaping () -> Void = {}) {
+    self.model = model; self.languageChanged = languageChanged
+    _diskModel = State(initialValue: DiskWorkspaceModel(volume: model.simulatorStorage.volume))
+  }
 
   var body: some View {
     GeometryReader { geometry in

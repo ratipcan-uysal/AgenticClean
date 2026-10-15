@@ -30,12 +30,15 @@ Covered journeys:
 
 8. Simulator inventory starts unchecked, blocks running devices, shows unknown size,
    freezes the reviewed selection, and performs no action on cancel/refresh.
-9. Simulator deletion targets only the selected closed UDID and verifies its absence.
-10. Simulator content erasure retains the device and does not delete another device.
+9. Simulator deletion targets only the selected closed UDID and verifies its absence;
+   the shared disk card refreshes automatically and reports the observed before/after change.
+10. Simulator content erasure retains the device and does not delete another device;
+    explicit disk refresh updates current availability while preserving the action's interval.
 11. A device booted after review is skipped without mutation.
 
 Simulator journeys use the production simctl preflight/verification with a synthetic
 transport; they do not erase or delete any real simulator.
+Disk readings in these journeys are deterministic synthetic values, not host free-space claims.
 
 Prerequisites: full Xcode selected with `xcode-select`, Swift 6.2 or later, XcodeGen
 (`brew install xcodegen`), Python 3, and a usable macOS GUI session with permission for

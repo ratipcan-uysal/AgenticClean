@@ -237,6 +237,7 @@ import XCTest
     XCTAssertTrue(app.checkBoxes["simstorage.choice." + unknownSimulatorID].exists)
     let calls = try JSONSerialization.jsonObject(with: Data(contentsOf: logURL)) as? [[String: String]]
     XCTAssertEqual(calls, [["kind": "simulator", "action": "delete", "udid": closedSimulatorID]])
+    try assertDiskRefreshAfterSimulatorAction()
   }
   func testSimulatorEraseRetainsDeviceAndDoesNotDeleteAnotherDevice() throws {
     defer { finishFixture() }
@@ -249,6 +250,22 @@ import XCTest
     XCTAssertFalse(try checkboxState(choice))
     let calls = try JSONSerialization.jsonObject(with: Data(contentsOf: logURL)) as? [[String: String]]
     XCTAssertEqual(calls, [["kind": "simulator", "action": "erase", "udid": closedSimulatorID]])
+    try assertDiskRefreshAfterSimulatorAction()
+  }
+  private func assertDiskRefreshAfterSimulatorAction() throws {
+    try waitEnabled("simstorage.refresh")
+    let change = element("disk.netChange")
+    try requireExists(change, "observed whole-volume change")
+    XCTAssertTrue(visibleText(change).contains("+1 GB"))
+    try click("Close")
+    let available = element("disk.available")
+    try requireExists(available, "shared disk card")
+    XCTAssertTrue(visibleText(available).contains("42 GB"), visibleText(available))
+    XCTAssertTrue(visibleText(element("disk.netChange")).contains("+1 GB"))
+    try click("disk.refresh"); try waitEnabled("disk.refresh")
+    XCTAssertTrue(visibleText(available).contains("43 GB"), visibleText(available))
+    // Explicit refresh updates the current reading, preserving the completed action's interval.
+    XCTAssertTrue(visibleText(element("disk.beforeAfter")).contains("42 GB"))
   }
   func testSimulatorBootedAfterReviewIsSkippedWithoutMutation() throws {
     defer { finishFixture() }
