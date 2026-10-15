@@ -105,8 +105,28 @@ actor FixtureWorld: SnapshotSource, ProjectProcessActions {
                     keyEquivalent: "q")
     appItem.submenu = appMenu
     menu.addItem(appItem)
+    // Fixture controls must remain reachable while a production detail window
+    // covers the main toolbar on smaller CI displays.
+    let fixtureItem = NSMenuItem(title: "Fixture", action: nil, keyEquivalent: "")
+    let fixtureMenu = NSMenu(title: "Fixture")
+    for (title, action) in [
+      ("Pause monitoring", #selector(pauseMonitoring)),
+      ("Resume monitoring", #selector(resumeMonitoring)),
+      ("Fail scan", #selector(failScan)),
+    ] {
+      let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+      item.target = self
+      fixtureMenu.addItem(item)
+    }
+    fixtureItem.submenu = fixtureMenu
+    menu.addItem(fixtureItem)
     NSApp.mainMenu = menu
     showWindow()
+  }
+  @objc private func pauseMonitoring() { model.paused = true }
+  @objc private func resumeMonitoring() { model.paused = false }
+  @objc private func failScan() {
+    Task { await world.setScanFailure(true); await model.refresh() }
   }
   private func showWindow() {
     if window == nil {
@@ -210,7 +230,7 @@ private struct FixtureRoot: View {
         Button(model.paused ? "Resume" : "Pause") {
           model.paused.toggle()
         }.accessibilityIdentifier("harness.pause")
-        Button("Fail scan") {
+        Button(model.scanError == nil ? "Fail scan" : "Scan failed") {
           Task { await world.setScanFailure(true); await model.refresh() }
         }.accessibilityIdentifier("harness.failScan")
         Spacer(minLength: 0)

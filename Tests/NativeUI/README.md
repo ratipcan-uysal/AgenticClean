@@ -52,3 +52,9 @@ product URL, compare the generated build ID with the product plist, and independ
 read the running app's bundle path/build ID and actual content dimensions. An older
 LaunchServices registration or oversized window therefore fails before the journey.
 The running identity/window JSON is retained as an `.xcresult` attachment.
+
+Pause and scan-failure scenarios use the native **Fixture** application menu, then
+assert the Dashboard fixture actually changed state before checking the production
+helper button's disabled state and explanation. This keeps the commands reachable on
+small CI displays where the independent project review window covers the main toolbar.
+These controls exist only in the isolated harness, never in AgenticClean's release.

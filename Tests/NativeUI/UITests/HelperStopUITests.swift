@@ -122,6 +122,23 @@ import XCTest
     try requireExists(target, identifier, file: file, line: line)
     target.click()
   }
+  private func fixtureCommand(_ title: String) throws {
+    let menu = app.menuBars.menuBarItems["Fixture"]
+    try requireExists(menu, "native Fixture menu")
+    menu.click()
+    let command = app.menuItems[title]
+    try requireExists(command, "Fixture command: " + title)
+    command.click()
+  }
+  private func waitForLabel(_ identifier: String, _ label: String) throws {
+    let expectation = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "label == %@", label), object: element(identifier))
+    guard XCTWaiter.wait(for: [expectation], timeout: 8) == .completed else {
+      captureDiagnostics("Fixture state did not change: " + identifier)
+      XCTFail("Expected fixture state label: " + label)
+      throw FixtureFailure.unavailable(identifier)
+    }
+  }
   private func showProject() throws {
     try click("harness.project")
     try requireExists(app.checkBoxes["helpers.choice.900001"], "first helper checkbox")
@@ -213,7 +230,8 @@ import XCTest
     try showProject()
     try click("helpers.choice.900001")
     try waitEnabled("helpers.review")
-    try click("harness.pause")
+    try fixtureCommand("Pause monitoring")
+    try waitForLabel("harness.pause", "Resume")
     try waitEnabled("helpers.review", enabled: false)
     let reason = element("helpers.disabledReason")
     try requireExists(reason, "helper disabled reason")
@@ -227,7 +245,8 @@ import XCTest
     try showProject()
     try click("helpers.choice.900001")
     try waitEnabled("helpers.review")
-    try click("harness.failScan")
+    try fixtureCommand("Fail scan")
+    try waitForLabel("harness.failScan", "Scan failed")
     try waitEnabled("helpers.review", enabled: false)
     let reason = element("helpers.disabledReason")
     try requireExists(reason, "helper disabled reason")
