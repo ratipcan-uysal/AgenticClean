@@ -186,6 +186,7 @@ struct SimulatorStorageView: View {
   private var results: some View {
     VStack(alignment: .leading, spacing: 8) {
       Text(L10n.text("Son işlem sonuçları", "Latest action results")).font(.headline)
+      if let change = model.diskChange { DiskSpaceChangeView(change: change) }
       ForEach(model.results) { result in
         VStack(alignment: .leading, spacing: 4) {
           Text(result.device.name + " · " + status(result)).font(.callout)

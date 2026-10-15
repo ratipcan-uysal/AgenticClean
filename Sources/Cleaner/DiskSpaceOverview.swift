@@ -114,15 +114,23 @@ struct DiskSpaceOverview: View {
       HStack(alignment: .firstTextBaseline) {
         Label(L10n.text("Kullanılabilir", "Available") + "  " + Format.bytes(model.available), systemImage: "internaldrive")
           .font(.title2.weight(.semibold))
+          .accessibilityIdentifier("disk.available")
         Text("/ " + Format.bytes(model.capacity)).foregroundStyle(AgenticPalette.secondaryText)
         Spacer()
         if let date = model.volumeDate { Text(date, format: .dateTime.hour().minute()).font(.caption).foregroundStyle(AgenticPalette.secondaryText) }
+        Button(L10n.text("Yenile", "Refresh")) { Task { await model.refreshVolume() } }
+          .disabled(model.volume.refreshing || simulatorStorage.running)
+          .accessibilityIdentifier("disk.refresh")
       }
+      if model.volume.refreshing { ProgressView().controlSize(.small) }
       if let capacity = model.capacity, capacity > 0, let available = model.available {
         ProgressView(value: Double(capacity - min(available, capacity)), total: Double(capacity))
           .tint(lowSpace ? AgenticPalette.warning : AgenticPalette.accent)
       } else { Text(L10n.text("Disk kapasitesi okunamadı", "Volume capacity unavailable")).font(.caption) }
       if lowSpace { Label(L10n.text("Kullanılabilir alan %10’un altında", "Less than 10% available"), systemImage: "exclamationmark.circle").foregroundStyle(AgenticPalette.warning).font(.caption) }
+      if let change = simulatorStorage.diskChange {
+        DiskSpaceChangeView(change: change)
+      }
       HStack(spacing: 30) {
         metric(L10n.text("İncelenen projelerde ölçülen alan", "Measured in scanned projects"), value: model.results.compactMap(\.bytes).isEmpty ? "—" : (model.results.contains { $0.state != .complete } ? "≥ " : "") + Format.bytes(measuredBytes))
         metric(L10n.text("Temizleme için incelenebilir çıktılar", "Outputs available for review"), value: model.cleanupPlan == nil ? "—" : Format.bytes(reviewBytes))

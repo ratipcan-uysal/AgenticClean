@@ -48,11 +48,15 @@ public struct NativeSimulatorStorageService: SimulatorStorageService {
   public private(set) var cancellationRequested = false
   public private(set) var currentDevice: String?
   public private(set) var results: [SimulatorStorageResult] = []
+  public private(set) var diskChange: DiskSpaceChange?
+  public let volume: DiskVolume
   public private(set) var plan: SimulatorStoragePlan?
   public private(set) var checked = Set<String>()
   @ObservationIgnored private let service: any SimulatorStorageService
   @ObservationIgnored private var batch: Task<Void, Never>?
-  public init(service: any SimulatorStorageService = NativeSimulatorStorageService()) { self.service = service }
+  public init(service: any SimulatorStorageService = NativeSimulatorStorageService(), volume: DiskVolume = DiskVolume()) {
+    self.service = service; self.volume = volume
+  }
   public var measuredBytes: UInt64? { totalMeasured(devices) }
   public var unknownSizeCount: Int { devices.filter { $0.measuredBytes == nil }.count }
   public var selected: [SimulatorDevice] { devices.filter { checked.contains($0.id) && $0.canReviewStorage } }
@@ -81,8 +85,9 @@ public struct NativeSimulatorStorageService: SimulatorStorageService {
   public func dismissReview() { if !running { plan = nil } }
   public func confirm(_ approved: SimulatorStoragePlan) {
     guard !running, !loading, plan?.id == approved.id else { return }
-    running = true; cancellationRequested = false; results = []; checked = []; plan = nil
+    running = true; cancellationRequested = false; results = []; diskChange = nil; checked = []; plan = nil
     batch = Task { [self, service] in
+      let before = await volume.refresh()
       for device in approved.devices {
         if cancellationRequested {
           results.append(.init(device: device, action: approved.action, status: .cancelled))
@@ -94,6 +99,8 @@ public struct NativeSimulatorStorageService: SimulatorStorageService {
       currentDevice = nil
       do { devices = try await service.inventory(); date = Date(); error = nil }
       catch { devices = []; date = nil; self.error = error.localizedDescription }
+      let after = await volume.refresh()
+      diskChange = DiskSpaceChange(before: before, after: after)
       running = false; cancellationRequested = false; batch = nil
     }
   }

@@ -1,5 +1,11 @@
 # AgenticClean changelog
 
+## 0.7.7 — disk refresh after simulator cleanup
+
+- Refresh the shared disk-space card before and after simulator deletion/erasure, including uncertain outcomes and cancelled batches.
+- Add explicit disk refresh and show before/after available space with signed net change. The change includes other apps' writes and APFS effects; it is not attributed recovered space.
+- Keep unavailable measurements unknown and reject delayed older reads.
+
 ## 0.7.6 — simulator device storage
 
 - List all simulator devices with runtime, measured data, state and known/unknown last use; add a shared entry from Disk Space.

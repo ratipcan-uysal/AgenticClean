@@ -68,6 +68,66 @@ private actor StorageEnvironment: SimulatorEnvironment, SimulatorStorageService 
   var mutations: [[String]] { commands.filter { $0.first == "delete" || $0.first == "erase" } }
 }
 
+private actor StorageVolumeRead {
+  var calls = 0
+  let end: UInt64?
+  let missingBefore: Bool
+  let environment: StorageEnvironment
+  init(end: UInt64?, missingBefore: Bool = false, environment: StorageEnvironment) {
+    self.end = end; self.missingBefore = missingBefore; self.environment = environment
+  }
+  func read() async -> DiskVolumeSample? {
+    calls += 1
+    let before = calls == 1
+    #expect(await environment.mutations.count == (before ? 0 : 1))
+    guard let bytes = before ? (missingBefore ? nil : 40) : end else { return nil }
+    return DiskVolumeSample(capacity: 100, available: bytes, volumeID: "data")
+  }
+}
+
+@Test(arguments: [SimulatorStorageAction.delete, .erase])
+@MainActor func simulatorBatchRefreshesSharedDiskAndCapturesNetChange(action: SimulatorStorageAction) async throws {
+  let a = storageDevice(simA), env = StorageEnvironment([storageDevice(simA)])
+  let reader = StorageVolumeRead(end: 45, environment: env)
+  let volume = DiskVolume { await reader.read() }
+  let model = SimulatorStorage(service: env, volume: volume)
+  await model.refresh(); model.select(a, checked: true); model.review(action)
+  #expect(model.diskChange == nil)
+  model.confirm(try #require(model.plan)); await model.waitForBatch()
+  #expect(volume.sample?.available == 45)
+  #expect(model.diskChange?.before?.available == 40)
+  #expect(model.diskChange?.after == volume.sample)
+  #expect(model.diskChange?.netBytes == 5)
+  #expect(await reader.calls == 2)
+  #expect(model.results.first?.status == .completed && !model.running)
+}
+
+@Test(arguments: [UInt64(40), 35, nil])
+@MainActor func simulatorNetChangeCanBeZeroNegativeOrUnavailable(end: UInt64?) async throws {
+  let a = storageDevice(simA), env = StorageEnvironment([storageDevice(simA)])
+  let reader = StorageVolumeRead(end: end, environment: env)
+  let volume = DiskVolume { await reader.read() }
+  let model = SimulatorStorage(service: env, volume: volume)
+  await model.refresh(); model.select(a, checked: true); model.review(.delete)
+  model.confirm(try #require(model.plan)); await model.waitForBatch()
+  #expect(model.diskChange?.netBytes == end.map { Int64($0) - 40 })
+  #expect(volume.sample?.available == end)
+  #expect(model.results.first?.status == .completed)
+}
+
+@Test @MainActor func simulatorVolumeFailureDoesNotBlockActionOrInventRecoveredBytes() async throws {
+  let a = storageDevice(simA), env = StorageEnvironment([storageDevice(simA)])
+  let reader = StorageVolumeRead(end: 45, missingBefore: true, environment: env)
+  let model = SimulatorStorage(service: env, volume: DiskVolume { await reader.read() })
+  await model.refresh(); model.select(a, checked: true); model.review(.erase)
+  // An uncertain simulator postflight must still refresh the disk card.
+  await env.configure(failAfter: true)
+  model.confirm(try #require(model.plan)); await model.waitForBatch()
+  #expect(model.diskChange?.before == nil && model.diskChange?.after?.available == 45)
+  #expect(model.diskChange?.netBytes == nil && model.volume.sample?.available == 45)
+  #expect(model.results.first?.status == .unverified && model.error != nil)
+}
+
 @Test func storageInventoryIncludesClosedDevicesAndUnknownMetadataWithoutGuessing() async throws {
   let env = StorageEnvironment([storageDevice(simA, bytes: nil), storageDevice(simB, state: "Booted", bytes: 500)])
   let devices = try await env.inventory()
@@ -159,7 +219,8 @@ private actor StorageEnvironment: SimulatorEnvironment, SimulatorStorageService 
 }
 @Test @MainActor func cancelRemainingWaitsForSubmittedDeviceAndDoesNotSubmitAnother() async throws {
   let a = storageDevice(simA), b = storageDevice(simB), env = StorageEnvironment([storageDevice(simA), storageDevice(simB)])
-  let model = SimulatorStorage(service: env)
+  let reader = StorageVolumeRead(end: 45, environment: env)
+  let model = SimulatorStorage(service: env, volume: DiskVolume { await reader.read() })
   await model.refresh(); model.select(a, checked: true); model.select(b, checked: true); model.review(.delete)
   let plan = try #require(model.plan)
   await env.prepareBarrier()
@@ -171,6 +232,7 @@ private actor StorageEnvironment: SimulatorEnvironment, SimulatorStorageService 
   #expect(model.results.map(\.status) == [.completed, .cancelled])
   #expect(!model.running && model.checked.isEmpty)
   #expect(await env.mutations == [["delete", simA]])
+  #expect(model.diskChange?.netBytes == 5 && model.volume.sample?.available == 45)
 }
 
 @Test @MainActor func storageMeasurementsNeverTurnAnUnknownTotalIntoZeroOrOverflow() async throws {

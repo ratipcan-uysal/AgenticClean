@@ -31,6 +31,8 @@ Codex, Claude Code ve Cursor için süreç/proje inceleme desteklenir; bu araçl
 
 **Simülatörler:** Açık cihazları kapatma incelemesi yanında, **Disk alanı** görünümü tüm cihazları boyut, sürüm ve bilinen son kullanımlarıyla listeler. Kapalı cihazlar başlangıçta seçilmez. **İçeriği sıfırla…** cihazı koruyarak uygulama/veri/ayarlarını, **Cihazı sil…** cihazın kendisini kalıcı kaldırır; Çöp Sepeti’nden geri alınamaz. Her cihaz için yeniden kimlik/durum kontrolü ve ayrı sonuç vardır; başka bir oturumun gelecekteki kullanım niyeti doğrulanamaz. Boyutlar ortak runtime alanını içermez ve kesin alan kazanımı değildir. Disk Alanı ekranındaki kart aynı incelemeyi açar. Pencere kapansa da işlem sürer; iptal veya uygulamadan çıkış, başlatılan cihazı tamamlayıp kalanları atlar.
 
+**Disk ölçümünü yenileme:** Simülatör silme veya sıfırlama öncesinde ve sonrasında kullanıcı diskinin kullanılabilir alanı yeniden okunur; ana kart ve işlem sonuçları aynı ölçümü kullanır. **Yenile** yalnız disk ölçümünü günceller. Son işlem için önce/sonra alanı ve pozitif, sıfır veya negatif net değişim gösterilir. Bu fark diğer uygulamaların yazmalarını ve APFS etkilerini de kapsar; silinen cihazların kesin alan kazancı değildir. Ölçüm okunamazsa bilinmiyor olarak kalır.
+
 **Grafikler:** Genel Bakış’ta CPU ve bellek baskısının küçük grafikleri bulunur. Ayrıntılı sistem geçmişi ve uygulama/proje geçmişi ayrı açılır. Ana ekran küçük pencerede listeye öncelik verir. Uygulama/proje geçmişi son 30 dakikayı, en az 15 saniye aralıkla CPU ve bellekte ilk 20 grubu tutar. Kısmi kullanım kesikli çizgidir; toplam daha yüksek olabilir. Hiç ölçülmeyen veya tutulmayan değerler grafikte boşluktur, sıfır değildir. Geçmiş yalnızca bellekte, mevcut oturum boyunca kalır.
 
 ## Yerel servisler

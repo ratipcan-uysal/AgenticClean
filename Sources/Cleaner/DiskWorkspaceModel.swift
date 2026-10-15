@@ -17,15 +17,16 @@ import Observation
   var cancellationRequested = false
   var progress = ""
   var error: String?
-  var capacity: UInt64?
-  var available: UInt64?
-  var volumeDate: Date?
+  let volume: DiskVolume
+  var capacity: UInt64? { volume.sample?.capacity }
+  var available: UInt64? { volume.sample?.available }
+  var volumeDate: Date? { volume.sample?.date }
   var task: Task<Void, Never>?
   let engine = CacheCleanupEngine()
   private let scanner = DiskProjectScanner()
   private var bookmarks: [Data] = []
   private var scopedURLs: [URL] = []
-  init() { restoreBookmarks() }
+  init(volume: DiskVolume = DiskVolume()) { self.volume = volume; restoreBookmarks() }
   isolated deinit {
     task?.cancel()
     for url in scopedURLs { url.stopAccessingSecurityScopedResource() }
@@ -175,11 +176,6 @@ import Observation
     }
   }
   func refreshVolume() async {
-    let value = await Self.volume()
-    capacity = value.0; available = value.1; volumeDate = Date()
-  }
-  @concurrent private static func volume() async -> (UInt64?, UInt64?) {
-    let values = try? FileManager.default.homeDirectoryForCurrentUser.resourceValues(forKeys: [.volumeTotalCapacityKey, .volumeAvailableCapacityKey])
-    return (values?.volumeTotalCapacity.flatMap { $0 >= 0 ? UInt64($0) : nil }, values?.volumeAvailableCapacity.flatMap { $0 >= 0 ? UInt64($0) : nil })
+    await volume.refresh()
   }
 }

@@ -130,6 +130,15 @@ actor FixtureSimulators: SimulatorEnvironment, SimulatorStorageService {
   }
 }
 
+/// Deterministic whole-volume readings; no host filesystem or real cleanup involved.
+actor FixtureVolume {
+  private var available: UInt64 = 40 * 1_073_741_824
+  func read() -> DiskVolumeSample {
+    defer { available += 1_073_741_824 }
+    return DiskVolumeSample(capacity: 100 * 1_073_741_824, available: available, volumeID: "fixture")
+  }
+}
+
 @MainActor final class FixtureDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
   private var window: NSWindow?
   private let world: FixtureWorld
@@ -150,8 +159,9 @@ actor FixtureSimulators: SimulatorEnvironment, SimulatorStorageService {
     let simulators = FixtureSimulators(logURL: URL(fileURLWithPath: path))
     self.simulators = simulators
     self.identityURL = URL(fileURLWithPath: path + ".identity.json")
+    let volume = FixtureVolume()
     self.model = Dashboard(source: world, defaults: .standard, projectActions: world,
-      simulatorStorage: SimulatorStorage(service: simulators))
+      simulatorStorage: SimulatorStorage(service: simulators, volume: DiskVolume { await volume.read() }))
     self.model.interval = 300
     super.init()
   }
