@@ -1,11 +1,24 @@
 import Darwin
 import Foundation
 
-public struct SimulatorDevice: Identifiable, Decodable, Sendable {
+public struct SimulatorDevice: Identifiable, Decodable, Sendable, Equatable {
   public let udid: String
   public let name: String
   public let state: String
+  public var runtime: String? = nil
+  public var deviceTypeIdentifier: String? = nil
+  public var isAvailable: Bool? = nil
+  public var dataPath: String? = nil
+  public var dataPathSize: UInt64? = nil
+  public var logPathSize: UInt64? = nil
+  public var lastUsedAt: String? = nil
   public var id: String { udid }
+  public var measuredBytes: UInt64? {
+    guard let dataPathSize else { return nil }
+    let (total, overflow) = dataPathSize.addingReportingOverflow(logPathSize ?? 0)
+    return overflow ? nil : total
+  }
+  public var canReviewStorage: Bool { state == "Shutdown" && UUID(uuidString: udid) != nil }
 }
 public enum CommandFailure: Error, LocalizedError, Sendable {
   case timedOut, cancelled, outputLimit
@@ -113,7 +126,9 @@ private struct NativeSimulatorEnvironment: SimulatorEnvironment {
     FileManager.default.isExecutableFile(atPath: path)
   }
   func run(_ executable: String, arguments: [String]) async throws -> Data {
-    try await CommandRunner.run(executable: executable, arguments: arguments)
+    let mutation = arguments.first == "erase" || arguments.first == "delete"
+    return try await CommandRunner.run(executable: executable, arguments: arguments,
+                                       timeout: mutation ? 120 : 15)
   }
 }
 
@@ -136,6 +151,68 @@ public enum SimulatorControl {
   public static func devices() async throws -> [SimulatorDevice] {
     try await devices(environment: NativeSimulatorEnvironment())
   }
+  public static func inventory() async throws -> [SimulatorDevice] {
+    try await inventory(environment: NativeSimulatorEnvironment())
+  }
+  static func inventory(environment: some SimulatorEnvironment) async throws -> [SimulatorDevice] {
+    let executable = try await tool(environment: environment)
+    let data = try await environment.run(executable, arguments: ["list", "devices", "--json"])
+    let list = try JSONDecoder().decode(DeviceList.self, from: data)
+    var seen = Set<String>()
+    var result: [SimulatorDevice] = []
+    for (runtime, devices) in list.devices {
+      for var device in devices {
+        guard seen.insert(device.id).inserted else {
+          throw MonitorError.message("Duplicate simulator identity")
+        }
+        device.runtime = runtime
+        result.append(device)
+      }
+    }
+    return result.sorted {
+      if $0.measuredBytes != $1.measuredBytes { return ($0.measuredBytes ?? 0) > ($1.measuredBytes ?? 0) }
+      return $0.id < $1.id
+    }
+  }
+  public static func clean(_ device: SimulatorDevice, action: SimulatorStorageAction) async -> SimulatorStorageResult {
+    await clean(device, action: action, environment: NativeSimulatorEnvironment())
+  }
+  static func clean(_ device: SimulatorDevice, action: SimulatorStorageAction,
+                    environment: some SimulatorEnvironment) async -> SimulatorStorageResult {
+    func result(_ status: SimulatorStorageStatus, _ detail: String? = nil) -> SimulatorStorageResult {
+      SimulatorStorageResult(device: device, action: action, status: status, detail: detail)
+    }
+    guard device.canReviewStorage else { return result(.blocked) }
+    do {
+      // Pin this batch item to one selected Xcode even if the system selection changes.
+      let executable = try await tool(environment: environment)
+      let pinned = PinnedSimulatorEnvironment(executable: executable, base: environment)
+      guard !Task.isCancelled else { return result(.cancelled) }
+      let before = try await inventory(environment: pinned)
+      guard let current = before.first(where: { $0.id == device.id }) else { return result(.missing) }
+      guard current.canReviewStorage else { return result(.blocked) }
+      guard current.name == device.name, current.runtime == device.runtime,
+        current.deviceTypeIdentifier == device.deviceTypeIdentifier,
+        current.dataPath == device.dataPath else { return result(.changed) }
+      guard !Task.isCancelled else { return result(.cancelled) }
+      _ = try await environment.run(executable, arguments: [action.rawValue, device.udid])
+      let after = try await inventory(environment: pinned)
+      if action == .delete {
+        return result(after.contains { $0.id == device.id } ? .unverified : .completed)
+      }
+      // simctl's successful erase is the reset acknowledgement. Confirm that the
+      // same device still exists, shut down; do not infer bytes recovered.
+      guard let remaining = after.first(where: { $0.id == device.id }),
+        remaining.state == "Shutdown", remaining.name == device.name,
+        remaining.runtime == device.runtime, remaining.dataPath == device.dataPath,
+        remaining.deviceTypeIdentifier == device.deviceTypeIdentifier else { return result(.unverified) }
+      return result(.completed)
+    } catch {
+      // Even an error can arrive after simctl submitted an operation to its service.
+      // Never retry automatically or claim that data was preserved.
+      return result(.unverified, error.localizedDescription)
+    }
+  }
   static func devices(environment: some SimulatorEnvironment) async throws -> [SimulatorDevice] {
     let executable = try await tool(environment: environment)
     let data = try await environment.run(executable, arguments: ["list", "devices", "booted", "--json"])
@@ -151,5 +228,17 @@ public enum SimulatorControl {
     }
     let executable = try await tool(environment: environment)
     _ = try await environment.run(executable, arguments: ["shutdown", device.udid])
+  }
+}
+
+private struct PinnedSimulatorEnvironment<Base: SimulatorEnvironment>: SimulatorEnvironment {
+  let executable: String
+  let base: Base
+  func developerDirectory() async throws -> String {
+    URL(fileURLWithPath: executable).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path
+  }
+  func isExecutable(_ path: String) async -> Bool { path == executable }
+  func run(_ path: String, arguments: [String]) async throws -> Data {
+    try await base.run(path, arguments: arguments)
   }
 }

@@ -1,5 +1,18 @@
 # AgenticClean changelog
 
+## 0.7.6 — simulator device storage
+
+- List all simulator devices with runtime, measured data, state and known/unknown last use; add a shared entry from Disk Space.
+- Review unchecked, exact-device selections for permanent content erasure or device deletion; block running/transitioning devices and recheck identity/state before each command.
+- Verify per-device results, preserve partial outcomes, and finish the current device before cancelling remaining work or quitting.
+- Keep simulator storage measurements separate from shared iOS runtimes and guaranteed recoverable space.
+
+## 0.7.5 — stable live inspection
+
+- Keep list membership, row order and project hierarchy fixed between explicit sorts while live measurements and action validation continue.
+- Queue new tasks behind a visible counter; retain missing rows with verified exit or unverified status until re-sort.
+- Preserve selection and expanded groups during automatic refresh; exclude missing readings from group totals.
+
 ## 0.7.4 — helper review and session operations
 
 - Keep simulator history collapsed inside the device scroll area, with compact latest results, so completed shutdowns do not shrink the running-device list.

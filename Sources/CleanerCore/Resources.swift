@@ -86,7 +86,10 @@ public struct ResourceGroup: Identifiable, Sendable {
   public let missingCPUCount: Int
   public let oldestStart: UInt64?
   public let age: Double
-  public var isProject: Bool { id.hasPrefix("/") && rows.allSatisfy { $0.project?.path == id } }
+  private let projectClassification: Bool?
+  public var isProject: Bool {
+    projectClassification ?? (id.hasPrefix("/") && rows.allSatisfy { $0.project?.path == id })
+  }
   public var projectSection: Int {
     if isProject { return 0 }
     if id == "context:unattributed" { return 3 }
@@ -94,18 +97,23 @@ public struct ResourceGroup: Identifiable, Sendable {
     if id.hasPrefix("context:service:") { return 4 }
     return 1
   }
-  public init(id: String, name: String, rows: [ProcessRow]) {
+  public init(
+    id: String, name: String, rows: [ProcessRow],
+    measurementRows: [ProcessRow]? = nil, projectClassification: Bool? = nil
+  ) {
     self.id = id
     self.name = name
     self.rows = rows
-    let cpus = rows.compactMap(\.cpu)
-    let memories = rows.compactMap(\.sample.footprint)
+    self.projectClassification = projectClassification
+    let measured = measurementRows ?? rows
+    let cpus = measured.compactMap(\.cpu)
+    let memories = measured.compactMap(\.sample.footprint)
     cpu = cpus.isEmpty ? nil : cpus.reduce(0, +)
     memory = memories.isEmpty ? nil : memories.reduce(0, +)
     missingCPUCount = rows.count - cpus.count
     missingMemoryCount = rows.count - memories.count
-    oldestStart = rows.map(\.id.seconds).min()
-    age = rows.map(\.sample.age).max() ?? 0
+    oldestStart = measured.map(\.id.seconds).min()
+    age = measured.map(\.sample.age).max() ?? 0
   }
 }
 public enum ResourceSummary {

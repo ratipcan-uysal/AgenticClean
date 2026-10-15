@@ -28,6 +28,8 @@ Codex, Claude Code and Cursor process/project inspection is supported. Their cha
 
 Close the window to keep monitoring from the menu bar; reopen it through AgenticClean’s menu. Choose **Quit AgenticClean** to stop the app. Settings offer Turkish/English and scan frequency. Preferences persist; process selection does not. In the focused list, use arrows to navigate and expand/collapse, Enter or Space to toggle a branch. Details appear beside a selected process. Overview includes small CPU and memory-pressure histories; detailed charts open separately.
 
+**Inspecting the list (0.7.5 source version):** Measurements update while row order, expanded groups and selection stay fixed. New tasks wait behind a counter. **Re-sort** adds them, removes missing rows and ranks current values. Changing Memory/CPU/Age, search or filters also rebuilds the list. A retained row that no longer matches a live threshold keeps its current readings until the next sort. Missing rows show closure only after identity verification, and their old readings do not enter live totals.
+
 ## What the numbers mean
 
 List CPU is a percentage of total processor capacity. Its number and bar use the same scale. Technical process detail separately uses one core = 100%. Memory is process footprint; missing footprint is never replaced by RSS or zero. Incomplete groups show their missing count. Memory bars use physical RAM as a fixed reference and do not rescale with search; footprint sums are not an exact physical RAM breakdown.
@@ -68,3 +70,6 @@ Ollama and LM Studio loaded-model inventories and reviewed unload use verified l
 Docker supports the official Desktop installation and standard user-owned socket, explicit inventory and an exact-container SIGTERM with no forced escalation. No Docker volumes or model files are deleted. Native provider calls run only after an explicit inspection/action, never by scanning default ports or starting a disabled service.
 
 The candidate is locally ad-hoc signed. Public distribution still requires Developer ID signing, notarization, external macOS compatibility checks and participant usability validation. macOS is the only current platform target.
+
+
+**Simulator storage (0.7.6 source version):** The simulator panel's Disk space view lists every device, runtime, measured data and known/unknown last use. Disk Space links to the same review. Shutdown devices start unchecked. Erase contents keeps the device definition but permanently erases apps, data and settings; Delete devices permanently removes the device. Neither action is recoverable from Trash. Each exact UDID is checked again for identity and Shutdown state, with separate results. Another session's future intent cannot be verified. Sizes exclude shared iOS runtimes and do not promise recovered disk space. Closing the panel leaves a batch running; cancellation or quitting finishes the current device and skips the rest.

@@ -5,6 +5,8 @@ import SwiftUI
 struct DiskSpaceOverview: View {
   @Bindable var model: DiskWorkspaceModel
   let discovered: [String]
+  @Bindable var simulatorStorage: SimulatorStorage
+  let showSimulators: () -> Void
   @State private var confirming = false
   @AppStorage("cleanerLanguage") private var language = "tr"
   private var measuredBytes: UInt64 { model.results.compactMap(\.bytes).reduce(0, +) }
@@ -16,6 +18,18 @@ struct DiskSpaceOverview: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       summary
+      HStack {
+        Label(L10n.text("Simülatör cihazları", "Simulator devices"), systemImage: "iphone")
+        if simulatorStorage.loading { ProgressView().controlSize(.small) }
+        else if simulatorStorage.date != nil {
+          Text(Format.bytes(simulatorStorage.measuredBytes)
+            + L10n.text(" · \(simulatorStorage.devices.count) cihaz", " · \(simulatorStorage.devices.count) devices"))
+            .monospacedDigit()
+        } else { Text(L10n.text("Ölçüm yok", "No measurement")).foregroundStyle(.secondary) }
+        Spacer()
+        Button(L10n.text("Cihazları incele…", "Review devices…"), action: showSimulators)
+          .accessibilityIdentifier("disk.simulators")
+      }.font(.callout).padding(12).background(AgenticPalette.surface, in: RoundedRectangle(cornerRadius: 10))
       HStack(spacing: 10) {
         Button(L10n.text("Projeleri tara", "Scan projects")) { model.scan(discovered: discovered) }
           .buttonStyle(.borderedProminent).disabled(model.busy || model.moving)
@@ -88,7 +102,7 @@ struct DiskSpaceOverview: View {
           .disabled(model.selectedArtifacts.isEmpty || model.busy || model.moving)
       }
     }.id(language).padding(20).frame(maxWidth: .infinity, maxHeight: .infinity)
-      .task { await model.refreshVolume() }
+      .task { await model.refreshVolume(); await simulatorStorage.refresh() }
       .onDisappear { if model.busy { model.cancel() } }
       .sheet(isPresented: $confirming) { confirmation }
       .onExitCommand {

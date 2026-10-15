@@ -32,6 +32,24 @@ jobs:
         run: python3 scripts/public_source.py
       - name: Whitespace validation
         run: git diff --check
+      - name: Package development candidate
+        run: |
+          candidate="$(cat dist/latest-candidate.txt)"
+          lipo "$candidate/Contents/MacOS/Cleaner" -verify_arch arm64
+          ditto -c -k --sequesterRsrc --keepParent "$candidate" dist/AgenticClean-development-arm64.zip
+          shasum -a 256 dist/AgenticClean-development-arm64.zip > dist/AgenticClean-development-arm64.zip.sha256
+          cp "$candidate/Contents/Info.plist" dist/development-candidate-info.plist
+      - name: Preserve development candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: development-candidate-arm64
+          path: |
+            dist/AgenticClean-development-arm64.zip
+            dist/AgenticClean-development-arm64.zip.sha256
+            dist/development-candidate-info.plist
+            dist/AgenticClean-*-source.tar.gz
+          if-no-files-found: error
+          retention-days: 7
   native-ui:
     runs-on: macos-15
     timeout-minutes: 20

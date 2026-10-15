@@ -143,6 +143,125 @@ import XCTest
     try click("harness.project")
     try requireExists(app.checkBoxes["helpers.choice.900001"], "first helper checkbox")
   }
+  func testLiveReadingsKeepRowsAndExpandedProjectFixedUntilExplicitResort() throws {
+    defer { finishFixture() }
+    try prepareFixture()
+    try fixtureCommand("Show list")
+    let projects = app.buttons["Projects"]
+    try requireExists(projects, "Projects sidebar")
+    projects.click()
+    try click("group.row./synthetic/cleaner-native-ui-project")
+    // The narrow CI window shows the inspector; closing it returns to the
+    // still-expanded list without resetting its expansion or scroll identity.
+    let close = app.buttons["Close details"]
+    try requireExists(close, "Close group details")
+    close.click()
+    let first = element("process.row.900001")
+    let second = element("process.row.900002")
+    try requireExists(first, "first displayed process")
+    try requireExists(second, "second displayed process")
+    let firstY = first.frame.minY
+    let secondY = second.frame.minY
+    try fixtureCommand("Change readings")
+    try requireExists(element("list.pending"), "pending new-task count")
+    XCTAssertTrue(visibleText(element("list.pending")).contains("1 new"))
+    XCTAssertEqual(first.frame.minY, firstY, accuracy: 1)
+    XCTAssertEqual(second.frame.minY, secondY, accuracy: 1)
+    XCTAssertTrue(visibleText(first).contains("4 MB"), visibleText(first))
+    XCTAssertFalse(element("process.row.900004").exists)
+    try fixtureCommand("Remove first task")
+    let closed = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Closed", "Closed"),
+      object: first)
+    XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 8), .completed)
+    XCTAssertEqual(first.frame.minY, firstY, accuracy: 1)
+    XCTAssertEqual(second.frame.minY, secondY, accuracy: 1)
+    try assertNoActions()
+    try click("list.resort")
+    try requireExists(element("process.row.900004"), "new process after explicit re-sort")
+    XCTAssertFalse(first.exists)
+    XCTAssertFalse(element("list.pending").exists)
+    XCTAssertLessThan(element("process.row.900004").frame.minY, second.frame.minY)
+    try assertNoActions()
+  }
+  private var closedSimulatorID: String { "00000000-0000-0000-0000-000000000021" }
+  private var activeSimulatorID: String { "00000000-0000-0000-0000-000000000022" }
+  private var unknownSimulatorID: String { "00000000-0000-0000-0000-000000000023" }
+  private func showSimulatorStorage() throws {
+    let disk = app.buttons["Disk Space"]
+    try requireExists(disk, "Disk Space sidebar")
+    disk.click()
+    try click("disk.simulators")
+    try requireExists(app.checkBoxes["simstorage.choice." + closedSimulatorID], "closed simulator")
+    try waitEnabled("simstorage.refresh")
+  }
+  private func waitSimulatorResult(_ fragment: String) throws {
+    let result = element("simstorage.result." + closedSimulatorID)
+    try requireExists(result, "simulator action result")
+    let expectation = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", fragment, fragment), object: result)
+    guard XCTWaiter.wait(for: [expectation], timeout: 8) == .completed else {
+      captureDiagnostics("Wrong simulator result: " + visibleText(result))
+      XCTFail("Expected result: " + fragment)
+      throw FixtureFailure.unavailable("simulator result")
+    }
+  }
+  func testSimulatorInventoryReviewCancelAndRefreshKeepActionsExplicit() throws {
+    defer { finishFixture() }
+    try prepareFixture(); try showSimulatorStorage()
+    let choice = app.checkBoxes["simstorage.choice." + closedSimulatorID]
+    XCTAssertFalse(try checkboxState(choice))
+    XCTAssertFalse(app.checkBoxes["simstorage.choice." + activeSimulatorID].isEnabled)
+    XCTAssertTrue(app.checkBoxes["simstorage.choice." + unknownSimulatorID].exists)
+    XCTAssertFalse(element("simstorage.reviewDelete").isEnabled)
+    XCTAssertTrue(visibleText(element("simstorage.summary")).contains("1 sizes unknown"))
+    choice.click()
+    try click("simstorage.reviewDelete")
+    try requireExists(element("simstorage.approval"), "destructive simulator review")
+    XCTAssertTrue(element("simstorage.approved." + closedSimulatorID).exists)
+    XCTAssertFalse(element("simstorage.approved." + activeSimulatorID).exists)
+    XCTAssertFalse(element("simstorage.approved." + unknownSimulatorID).exists)
+    try click("simstorage.cancel"); try assertNoActions()
+    try click("simstorage.refresh"); try waitEnabled("simstorage.refresh")
+    XCTAssertFalse(try checkboxState(choice))
+    try assertNoActions()
+  }
+  func testSimulatorDeleteOnlySelectedClosedDeviceAndVerifyResult() throws {
+    defer { finishFixture() }
+    try prepareFixture(); try showSimulatorStorage()
+    try click("simstorage.choice." + closedSimulatorID)
+    try click("simstorage.reviewDelete"); try click("simstorage.confirm")
+    try waitSimulatorResult("Deleted")
+    XCTAssertFalse(app.checkBoxes["simstorage.choice." + closedSimulatorID].exists)
+    XCTAssertTrue(app.checkBoxes["simstorage.choice." + activeSimulatorID].exists)
+    XCTAssertTrue(app.checkBoxes["simstorage.choice." + unknownSimulatorID].exists)
+    let calls = try JSONSerialization.jsonObject(with: Data(contentsOf: logURL)) as? [[String: String]]
+    XCTAssertEqual(calls, [["kind": "simulator", "action": "delete", "udid": closedSimulatorID]])
+  }
+  func testSimulatorEraseRetainsDeviceAndDoesNotDeleteAnotherDevice() throws {
+    defer { finishFixture() }
+    try prepareFixture(); try showSimulatorStorage()
+    try click("simstorage.choice." + closedSimulatorID)
+    try click("simstorage.reviewErase"); try click("simstorage.confirm")
+    try waitSimulatorResult("Contents erased")
+    let choice = app.checkBoxes["simstorage.choice." + closedSimulatorID]
+    XCTAssertTrue(choice.exists)
+    XCTAssertFalse(try checkboxState(choice))
+    let calls = try JSONSerialization.jsonObject(with: Data(contentsOf: logURL)) as? [[String: String]]
+    XCTAssertEqual(calls, [["kind": "simulator", "action": "erase", "udid": closedSimulatorID]])
+  }
+  func testSimulatorBootedAfterReviewIsSkippedWithoutMutation() throws {
+    defer { finishFixture() }
+    try prepareFixture(); try showSimulatorStorage()
+    try click("simstorage.choice." + closedSimulatorID)
+    try click("simstorage.reviewDelete")
+    try fixtureCommand("Boot reviewed device")
+    try click("simstorage.confirm")
+    try waitSimulatorResult("Skipped")
+    XCTAssertTrue(app.checkBoxes["simstorage.choice." + closedSimulatorID].exists)
+    XCTAssertFalse(app.checkBoxes["simstorage.choice." + closedSimulatorID].isEnabled)
+    try assertNoActions()
+  }
   private func checkboxState(_ checkbox: XCUIElement) throws -> Bool {
     let value = checkbox.value
     if let number = value as? NSNumber, [0, 1].contains(number.intValue) {

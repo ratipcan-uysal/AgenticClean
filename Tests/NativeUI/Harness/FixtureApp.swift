@@ -19,7 +19,9 @@ actor FixtureWorld: SnapshotSource, ProjectProcessActions {
             Self.row(900003, helper: false)]
     try? Data("[]".utf8).write(to: logURL, options: .atomic)
   }
-  nonisolated private static func row(_ pid: Int32, helper: Bool) -> ProcessRow {
+  nonisolated private static func row(
+    _ pid: Int32, helper: Bool, megabytes: UInt64 = 8, cpu: Double = 0
+  ) -> ProcessRow {
     let path = helper
       ? "/SyntheticApps/VerifiedFixture.app/Contents/Resources/cua_node/bin/node"
       : "/synthetic/bin/python3"
@@ -27,11 +29,11 @@ actor FixtureWorld: SnapshotSource, ProjectProcessActions {
       id: ProcessIdentity(pid: pid, seconds: 1), parent: 1, uid: getuid(), path: path,
       memory: 8 * 1_048_576)
     sample.cwd = projectPath
-    sample.footprint = 8 * 1_048_576
+    sample.footprint = megabytes * 1_048_576
     // Internal, test-only identity construction; native production scans still require signatures.
     if helper { sample.managedHelperIdentity = ManagedHelperIdentity.candidate(for: path) }
     var row = ProcessRow(
-      sample: sample, cpu: 0, reasons: [], owner: "Codex",
+      sample: sample, cpu: cpu, reasons: [], owner: "Codex",
       project: ProjectHint(path: projectPath, sourcePID: pid, inherited: false,
                            hasProjectMarker: true))
     row.applicationKey = "fixture.codex"
@@ -51,6 +53,13 @@ actor FixtureWorld: SnapshotSource, ProjectProcessActions {
   }
   func resetBaseline() {}
   func setScanFailure(_ value: Bool) { failScan = value }
+  func changeReadings() {
+    rows = [Self.row(900001, helper: true, megabytes: 4, cpu: 20),
+            Self.row(900002, helper: true, megabytes: 64, cpu: 40),
+            Self.row(900003, helper: false),
+            Self.row(900004, helper: false, megabytes: 128)]
+  }
+  func removeFirstTask() { stopped.insert(rows[0].id) }
   func stop(_ sample: ProcessSample) throws { try record(sample, kind: "project") }
   func stop(_ sample: ProcessSample, projectPath: String) throws {
     guard projectPath == Self.projectPath else { throw MonitorError.message("Wrong fixture project") }
@@ -76,9 +85,55 @@ actor FixtureWorld: SnapshotSource, ProjectProcessActions {
   }
 }
 
+/// Uses the production preflight/verification logic with a synthetic simctl transport.
+actor FixtureSimulators: SimulatorEnvironment, SimulatorStorageService {
+  static let closedID = "00000000-0000-0000-0000-000000000021"
+  static let runningID = "00000000-0000-0000-0000-000000000022"
+  static let unknownID = "00000000-0000-0000-0000-000000000023"
+  private var rows: [[String: String]] = [
+    ["udid": closedID, "name": "Archived QA", "state": "Shutdown", "bytes": "2147483648"],
+    ["udid": runningID, "name": "Active QA", "state": "Booted", "bytes": "1073741824"],
+    ["udid": unknownID, "name": "Unknown size QA", "state": "Shutdown"]]
+  private let logURL: URL
+  init(logURL: URL) { self.logURL = logURL }
+  func developerDirectory() -> String { "/synthetic/Xcode.app/Contents/Developer" }
+  func isExecutable(_ path: String) -> Bool { path == "/synthetic/Xcode.app/Contents/Developer/usr/bin/simctl" }
+  func run(_ executable: String, arguments: [String]) throws -> Data {
+    guard executable == "/synthetic/Xcode.app/Contents/Developer/usr/bin/simctl" else {
+      throw MonitorError.message("Unexpected fixture tool")
+    }
+    if arguments.first == "list" {
+      let values: [[String: Any]] = rows.map { row in
+        var value: [String: Any] = ["udid": row["udid"]!, "name": row["name"]!, "state": row["state"]!,
+                                  "dataPath": "/synthetic/devices/" + row["udid"]! + "/data"]
+        if let bytes = row["bytes"], let amount = UInt64(bytes) { value["dataPathSize"] = amount }
+        return value
+      }
+      return try JSONSerialization.data(withJSONObject: ["devices": ["com.apple.CoreSimulator.SimRuntime.iOS-18-5": values]])
+    }
+    guard ["delete", "erase"].contains(arguments.first ?? ""), arguments.count == 2,
+      let index = rows.firstIndex(where: { $0["udid"] == arguments[1] }),
+      rows[index]["state"] == "Shutdown" else { throw MonitorError.message("Invalid synthetic device action") }
+    let data = (try? Data(contentsOf: logURL)) ?? Data("[]".utf8)
+    var calls = (try JSONSerialization.jsonObject(with: data) as? [[String: String]]) ?? []
+    calls.append(["kind": "simulator", "action": arguments[0], "udid": arguments[1]])
+    try JSONSerialization.data(withJSONObject: calls).write(to: logURL, options: .atomic)
+    if arguments[0] == "delete" { rows.remove(at: index) } else { rows[index]["bytes"] = "0" }
+    return Data()
+  }
+  func inventory() async throws -> [SimulatorDevice] { try await SimulatorControl.inventory(environment: self) }
+  func clean(_ device: SimulatorDevice, action: SimulatorStorageAction) async -> SimulatorStorageResult {
+    await SimulatorControl.clean(device, action: action, environment: self)
+  }
+  func bootReviewedDevice() {
+    if let index = rows.firstIndex(where: { $0["udid"] == Self.closedID }) { rows[index]["state"] = "Booted" }
+  }
+}
+
 @MainActor final class FixtureDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
   private var window: NSWindow?
   private let world: FixtureWorld
+  private let simulators: FixtureSimulators
   private let model: Dashboard
   private let identityURL: URL
 
@@ -92,8 +147,11 @@ actor FixtureWorld: SnapshotSource, ProjectProcessActions {
       ?? NSTemporaryDirectory() + "cleaner-ui-fixture-" + UUID().uuidString + ".json"
     let world = FixtureWorld(logURL: URL(fileURLWithPath: path))
     self.world = world
+    let simulators = FixtureSimulators(logURL: URL(fileURLWithPath: path))
+    self.simulators = simulators
     self.identityURL = URL(fileURLWithPath: path + ".identity.json")
-    self.model = Dashboard(source: world, defaults: .standard, projectActions: world)
+    self.model = Dashboard(source: world, defaults: .standard, projectActions: world,
+      simulatorStorage: SimulatorStorage(service: simulators))
     self.model.interval = 300
     super.init()
   }
@@ -113,6 +171,10 @@ actor FixtureWorld: SnapshotSource, ProjectProcessActions {
       ("Pause monitoring", #selector(pauseMonitoring)),
       ("Resume monitoring", #selector(resumeMonitoring)),
       ("Fail scan", #selector(failScan)),
+      ("Show list", #selector(showList)),
+      ("Change readings", #selector(changeReadings)),
+      ("Remove first task", #selector(removeFirstTask)),
+      ("Boot reviewed device", #selector(bootReviewedDevice)),
     ] {
       let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
       item.target = self
@@ -127,6 +189,14 @@ actor FixtureWorld: SnapshotSource, ProjectProcessActions {
   @objc private func resumeMonitoring() { model.paused = false }
   @objc private func failScan() {
     Task { await world.setScanFailure(true); await model.refresh() }
+  }
+  @objc private func bootReviewedDevice() { Task { await simulators.bootReviewedDevice() } }
+  @objc private func showList() { model.selection = nil }
+  @objc private func changeReadings() {
+    Task { await world.changeReadings(); await model.refresh() }
+  }
+  @objc private func removeFirstTask() {
+    Task { await world.removeFirstTask(); await model.refresh() }
   }
   private func showWindow() {
     if window == nil {
