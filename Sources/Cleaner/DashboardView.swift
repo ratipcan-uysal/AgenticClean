@@ -150,6 +150,7 @@ struct DashboardView: View {
       }, showSimulators: { sheet = .simulators })
     case .operations: OperationsView(model: model)
     case .simulators: SimulatorsView(model: model)
+    case .simulatorStorage: SimulatorsView(model: model, storageInitially: true)
     case .system: SystemDetails(model: model)
     case .settings: MonitoringSettings(model: model)
     case .project(let plan): ProjectStopView(model: model, plan: plan)
@@ -503,7 +504,8 @@ struct DashboardView: View {
     }
   }
   private var diskLanding: some View {
-    DiskSpaceOverview(model: diskModel, discovered: diskProjects)
+    DiskSpaceOverview(model: diskModel, discovered: diskProjects,
+      simulatorStorage: model.simulatorStorage, showSimulators: { sheet = .simulatorStorage })
   }
   private var diskProjects: [String] {
     Array(Set((model.snapshot?.rows ?? []).compactMap { row in row.project.flatMap { $0.hasProjectMarker ? $0.path : nil } }))
@@ -1020,7 +1022,7 @@ enum BuildInfo {
 }
 
 private enum DashboardSheet: Identifiable {
-  case cleanup, groupHistory, operations, simulators, history, system, settings, docker, episodes, workReview
+  case cleanup, groupHistory, operations, simulators, simulatorStorage, history, system, settings, docker, episodes, workReview
   case project(ProjectStopPlan)
   var title: String {
     switch self {
@@ -1030,7 +1032,7 @@ private enum DashboardSheet: Identifiable {
     case .docker: "AgenticClean — Docker"
     case .groupHistory: L10n.text("AgenticClean — Proje geçmişi", "AgenticClean — Project history")
     case .operations: L10n.text("AgenticClean — Bu oturumdaki işlemler", "AgenticClean — This session’s operations")
-    case .simulators: L10n.text("AgenticClean — Simülatörler", "AgenticClean — Simulators")
+    case .simulators, .simulatorStorage: L10n.text("AgenticClean — Simülatörler", "AgenticClean — Simulators")
     case .history: L10n.text("AgenticClean — Grafikler", "AgenticClean — Charts")
     case .system: L10n.text("AgenticClean — Ölçüm ayrıntıları", "AgenticClean — Measurement details")
     case .settings: L10n.text("AgenticClean — Ayarlar", "AgenticClean — Settings")
@@ -1046,6 +1048,7 @@ private enum DashboardSheet: Identifiable {
     case .groupHistory: "group-history"
     case .operations: "operations"
     case .simulators: "simulators"
+    case .simulatorStorage: "simulator-storage"
     case .history: "history"
     case .system: "system"
     case .settings: "settings"

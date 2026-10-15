@@ -165,6 +165,7 @@ extension MonitorEngine: SnapshotSource {}
   public private(set) var simulatorError: String?
   public private(set) var simulatorToolIssue: SimulatorToolIssue?
   public private(set) var scanningDevices = false
+  public let simulatorStorage: SimulatorStorage
   public private(set) var pendingDevices = Set<String>()
   public private(set) var pendingProjects = Set<String>()
   @ObservationIgnored private var startedProjectPlans = Set<UUID>()
@@ -183,9 +184,11 @@ extension MonitorEngine: SnapshotSource {}
   @ObservationIgnored private var sleeping = false
   public init(
     source: any SnapshotSource = MonitorEngine(), defaults: UserDefaults = .standard,
-    projectActions: any ProjectProcessActions = NativeProjectProcessActions()
+    projectActions: any ProjectProcessActions = NativeProjectProcessActions(),
+    simulatorStorage: SimulatorStorage = SimulatorStorage()
   ) {
     self.projectActions = projectActions
+    self.simulatorStorage = simulatorStorage
     self.source = source
     self.defaults = defaults
     let saved = defaults.integer(forKey: "interval")

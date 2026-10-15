@@ -21,6 +21,15 @@ import SwiftUI
     return true
   }
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+  func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    guard dashboard.simulatorStorage.running else { return .terminateNow }
+    dashboard.simulatorStorage.cancelRemaining()
+    Task {
+      await dashboard.simulatorStorage.waitForBatch()
+      sender.reply(toApplicationShouldTerminate: true)
+    }
+    return .terminateLater
+  }
   func applicationWillTerminate(_ notification: Notification) { dashboard.stopMonitoring() }
   func windowWillClose(_ notification: Notification) {
     // Release charts and list views while the window is closed; sampling continues.

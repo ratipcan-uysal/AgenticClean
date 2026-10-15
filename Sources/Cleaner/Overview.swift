@@ -526,9 +526,8 @@ struct OperationsView: View {
     }.padding(20).frame(width: 650, height: 430)
   }
 }
-struct SimulatorsView: View {
+struct RunningSimulatorsView: View {
   @Bindable var model: Dashboard
-  @Environment(\.closeCleanerPanel) private var dismiss
   @State private var target: SimulatorDevice?
   @State private var historyExpanded = false
   private var simulatorEvents: [OperationEvent] { model.events.filter { $0.simulatorID != nil } }
@@ -630,11 +629,7 @@ struct SimulatorsView: View {
           )
         ).font(.caption).foregroundStyle(.secondary)
       }
-      HStack {
-        Spacer()
-        Button(L10n.text("Kapat", "Close")) { dismiss() }.keyboardShortcut(.cancelAction)
-      }
-    }.padding(20).frame(width: 650, height: 450)
+    }.padding(20).frame(maxWidth: .infinity, maxHeight: .infinity)
       .task { await model.refreshSimulators() }
       .alert(
         L10n.text("Simülatörü kapat?", "Shut down this simulator?"),

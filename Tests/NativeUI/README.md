@@ -2,7 +2,7 @@
 
 `./scripts/test-native-ui.sh` snapshots the current production `DashboardView`,
 `ProjectStopView`, `OperationsView` and their dependencies into an isolated XcodeGen
-project, compiles them unchanged, and runs seven macOS XCUITests. The production app
+project, compiles them unchanged, and runs eleven macOS XCUITests. The production app
 entry point is replaced by a **test-only app** (`local.cleaner.native-ui-harness.<unique-run>`).
 No test flags, fixture arguments or action overrides are added to the released app.
 
@@ -28,6 +28,15 @@ Covered journeys:
 7. Live measurements preserve row positions and expanded projects; new tasks wait for
    explicit re-sorting, and verified departures remain visible without authorizing actions.
 
+8. Simulator inventory starts unchecked, blocks running devices, shows unknown size,
+   freezes the reviewed selection, and performs no action on cancel/refresh.
+9. Simulator deletion targets only the selected closed UDID and verifies its absence.
+10. Simulator content erasure retains the device and does not delete another device.
+11. A device booted after review is skipped without mutation.
+
+Simulator journeys use the production simctl preflight/verification with a synthetic
+transport; they do not erase or delete any real simulator.
+
 Prerequisites: full Xcode selected with `xcode-select`, Swift 6.2 or later, XcodeGen
 (`brew install xcodegen`), Python 3, and a usable macOS GUI session with permission for
 Xcode's UI test runner. Only one native GUI owner should run at a time.
@@ -35,7 +44,7 @@ Xcode's UI test runner. Only one native GUI owner should run at a time.
 ```sh
 ./scripts/test-native-ui.sh --prepare-only # project/source manifest; no build or GUI
 ./scripts/test-native-ui.sh --build-only   # compile test bundle; no GUI execution
-./scripts/test-native-ui.sh                # compile and run all seven GUI journeys
+./scripts/test-native-ui.sh                # compile and run all eleven GUI journeys
 ```
 
 Evidence is saved in a unique ignored `dist/verification/native-ui-*` directory:
