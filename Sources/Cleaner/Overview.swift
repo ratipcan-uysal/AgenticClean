@@ -429,16 +429,18 @@ struct OperationsView: View {
   @Environment(\.closeCleanerPanel) private var dismiss
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      Text(L10n.text("İşlem geçmişi", "Operation history")).font(.title2.bold())
+      Text(L10n.text("Bu oturumdaki işlemler", "This session’s operations")).font(.title2.bold())
+        .accessibilityIdentifier("operations.title")
       Text(
         L10n.text(
-          "İşlem sonuçları tarama yenilendiğinde silinmez. Kapatılan kayıtlar ve uygulamadan çıkınca tüm geçmiş kaldırılır.",
-          "Refreshing does not clear operation results. Dismissed records are removed; quitting the app clears all history."
+          "Yalnızca bu oturum: en son \(Dashboard.completedEventLimit) tamamlanan işlem ve \(Dashboard.projectResultLimit) proje özeti bellekte tutulur. Devam eden işlemler korunur. Uygulamadan çıkınca kayıtlar silinir; diske geçmiş yazılmaz.",
+          "This session only: the latest \(Dashboard.completedEventLimit) completed operations and \(Dashboard.projectResultLimit) project summaries stay in memory. Ongoing operations are retained. Quitting clears all records; no history is written to disk."
         )
-      ).font(.caption).foregroundStyle(.secondary)
+      ).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("operations.sessionNotice")
       if model.events.isEmpty && model.projectResults.isEmpty {
         ContentUnavailableView(
           L10n.text("Henüz işlem yok", "No operations yet"), systemImage: "clock")
+          .accessibilityIdentifier("operations.empty")
       } else {
         ScrollView {
           LazyVStack(spacing: 12) {
@@ -498,6 +500,7 @@ struct OperationsView: View {
       HStack {
         Spacer()
         Button(L10n.text("Kapat", "Close")) { dismiss() }.keyboardShortcut(.cancelAction)
+          .accessibilityIdentifier("operations.dismiss")
       }
     }.padding(20).frame(width: 650, height: 430)
   }

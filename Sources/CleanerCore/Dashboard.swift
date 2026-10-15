@@ -123,6 +123,8 @@ public protocol SnapshotSource: Sendable {
 extension MonitorEngine: SnapshotSource {}
 
 @MainActor @Observable public final class Dashboard {
+  public static let completedEventLimit = 200
+  public static let projectResultLimit = 50
   public private(set) var snapshot: Snapshot?
   public private(set) var presentation = Presentation()
   public private(set) var history = HistoryBuffer()
@@ -164,6 +166,7 @@ extension MonitorEngine: SnapshotSource {}
   public private(set) var pendingDevices = Set<String>()
   public private(set) var pendingProjects = Set<String>()
   @ObservationIgnored private var startedProjectPlans = Set<UUID>()
+  @ObservationIgnored private var activeProjectBatches = Set<UUID>()
   @ObservationIgnored private let projectActions: any ProjectProcessActions
   @ObservationIgnored private let source: any SnapshotSource
   @ObservationIgnored private let defaults: UserDefaults
@@ -339,10 +342,23 @@ extension MonitorEngine: SnapshotSource {}
         id: id, process: process, name: name, date: Date(), state: state, simulatorID: simulatorID,
         projectBatchID: projectBatchID),
       at: 0)
+    trimOperationEvents()
     return id
   }
   public func setEvent(_ id: UUID, state: StopState) {
     if let index = events.firstIndex(where: { $0.id == id }) { events[index].state = state }
+    trimOperationEvents()
+  }
+  private func trimOperationEvents() {
+    var completed = 0
+    events.removeAll { event in
+      // Keep in-flight records and every result of an active project batch until
+      // its aggregate has been computed. These are not expendable history yet.
+      if event.state == .requested { return false }
+      if let batch = event.projectBatchID, activeProjectBatches.contains(batch) { return false }
+      completed += 1
+      return completed > Self.completedEventLimit
+    }
   }
   public func stop(_ row: ProcessRow) async {
     guard canStop(row) else { return }
@@ -406,11 +422,30 @@ extension MonitorEngine: SnapshotSource {}
     return nil
   }
   public func canConfirmProjectStop(_ plan: ProjectStopPlan) -> Bool {
-    selection == .group(plan.groupKey) && request == plan.request
-      && !plan.targets.isEmpty && !preparing && !paused && scanError == nil
-      && quality != .stale && quality != .failed
-      && presentation.containsGroup(plan.groupKey)
-      && !pendingProjects.contains(plan.groupKey) && !startedProjectPlans.contains(plan.id)
+    projectStopBlockReason(plan) == nil
+  }
+  public func projectStopBlockReason(_ plan: ProjectStopPlan) -> String? {
+    if paused { return "Ölçüm duraklatıldı; devam ettir." }
+    if scanError != nil || quality == .failed { return "Tarama başarısız; listeyi yeniden tara." }
+    if preparing { return "Liste hazırlanıyor; tamamlanmasını bekle." }
+    if quality == .stale { return "Ölçüm güncel değil; listeyi yenile." }
+    if selection != (plan.originSelection ?? .group(plan.groupKey)) || request != plan.request
+      || !presentation.containsGroup(plan.groupKey) {
+      return "Liste veya seçim değişti. Projeyi yeniden seçip güncel listeyi kontrol et."
+    }
+    if pendingProjects.contains(plan.groupKey) { return "Bu proje için işlem sürüyor; sonucu bekle." }
+    if startedProjectPlans.contains(plan.id) { return "Bu işlem zaten gönderildi; güncel listeyi yeniden incele." }
+    if plan.targets.isEmpty { return "Durdurmaya uygun süreç yok." }
+    return nil
+  }
+  public func helperStopPlan(for row: ProcessRow) -> ProjectStopPlan? {
+    guard selection == .process(row.id), selectedPresence == .sameIdentity,
+      let current = presentation.rows.first(where: { $0.id == row.id }),
+      current.sample.path == row.sample.path, current.sample.uid == row.sample.uid,
+      let path = current.project?.path
+    else { return nil }
+    let key = request.mode == .projects ? path : current.applicationKey + "\u{0}" + path
+    return projectStopPlan(for: key)?.reviewingHelper(row.id)
   }
   public func stopProject(_ plan: ProjectStopPlan) async throws {
     guard canConfirmProjectStop(plan) else {
@@ -420,7 +455,12 @@ extension MonitorEngine: SnapshotSource {}
     let before = snapshot
     startedProjectPlans.insert(plan.id)
     pendingProjects.insert(plan.groupKey)
-    defer { pendingProjects.remove(plan.groupKey) }
+    activeProjectBatches.insert(plan.id)
+    defer {
+      pendingProjects.remove(plan.groupKey)
+      activeProjectBatches.remove(plan.id)
+      trimOperationEvents()
+    }
     // Reserve the fixed confirmation set before yielding; another action cannot double-submit it.
     let reservations = plan.targets.map { row in
       (
@@ -440,7 +480,8 @@ extension MonitorEngine: SnapshotSource {}
         let current = snapshot?.rows.first(where: { $0.id == row.id }),
         current.applicationKey == row.applicationKey, current.project?.path == plan.path,
         current.sample.path == row.sample.path, current.sample.cwd == row.sample.cwd,
-        ProjectStopPlan.exclusion(for: current, pending: false) == nil,
+        current.sample.uid == row.sample.uid,
+        ProjectStopPlan.exclusion(for: current, pending: false, mode: plan.mode) == nil,
         ProjectStopPlan.sessionExclusion(for: current, among: snapshot?.rows ?? []) == nil,
         current.sample.agentSession == nil || snapshot?.unreadableUserCount == 0,
         !events.contains(where: { $0.process == row.id && $0.state == .requested && $0.id != event }
@@ -458,7 +499,11 @@ extension MonitorEngine: SnapshotSource {}
         continue
       }
       do {
-        try await projectActions.stop(row.sample, projectPath: plan.path)
+        switch plan.mode {
+        case .project: try await projectActions.stop(row.sample, projectPath: plan.path)
+        case .managedHelpers:
+          try await projectActions.stopManagedHelper(row.sample, projectPath: plan.path)
+        }
         waiting.append((row.id, event, ProcessInfo.processInfo.systemUptime))
       } catch {
         let message = error.localizedDescription
@@ -491,7 +536,9 @@ extension MonitorEngine: SnapshotSource {}
     let after = snapshot.flatMap { scanError == nil && $0.date >= completedAt ? $0 : nil }
     projectResults.insert(
       .evaluate(plan: plan, events: events, before: before, after: after), at: 0)
-    if projectResults.count > 50 { projectResults.removeLast(projectResults.count - 50) }
+    if projectResults.count > Self.projectResultLimit {
+      projectResults.removeLast(projectResults.count - Self.projectResultLimit)
+    }
   }
   public func refreshSimulators() async {
     guard !scanningDevices else { return }

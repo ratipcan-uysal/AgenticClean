@@ -7,10 +7,15 @@ import Testing
 private func projectRow(
   _ pid: Int32, app: String = "codex", path: String = "/work/project", inherited: Bool = false,
   executable: String = "/opt/homebrew/bin/node", seconds: UInt64 = 1, cwd: String? = nil,
-  parent: Int32 = 1
+  parent: Int32 = 1, uid: UInt32 = getuid()
 ) -> ProcessRow {
   var sample = ProcessSample(
-    id: .init(pid: pid, seconds: seconds), parent: parent, uid: getuid(), path: executable)
+    id: .init(pid: pid, seconds: seconds), parent: parent, uid: uid, path: executable)
+  // Synthetic verified identity: no installed vendor application is needed for policy tests.
+  if ["/Applications/Codex.app/Contents/Resources/", "/Applications/ChatGPT.app/Contents/Resources/"]
+    .contains(where: executable.hasPrefix) {
+    sample.managedHelperIdentity = ManagedHelperIdentity.candidate(for: executable)
+  }
   sample.cwd = cwd ?? path
   var row = ProcessRow(
     sample: sample, cpu: 0, reasons: [], owner: app,
@@ -35,14 +40,19 @@ private actor ProjectSource: SnapshotSource {
 }
 private actor FakeProjectActions: ProjectProcessActions {
   var calls: [ProcessIdentity] = []
+  var helperCalls: [ProcessIdentity] = []
   let fail: Int32?
   init(fail: Int32? = nil) { self.fail = fail }
   func stop(_ sample: ProcessSample) throws {
     calls.append(sample.id)
     if sample.id.pid == fail { throw MonitorError.message("fixture failure") }
   }
+  func stopManagedHelper(_ sample: ProcessSample, projectPath: String) {
+    helperCalls.append(sample.id)
+  }
   func presence(_ identity: ProcessIdentity) -> ProcessPresence {
-    identity.pid == fail || !calls.contains(identity) ? .sameIdentity : .absent
+    identity.pid == fail || (!calls.contains(identity) && !helperCalls.contains(identity))
+      ? .sameIdentity : .absent
   }
 }
 @MainActor private func projectModel(_ source: ProjectSource, _ actions: FakeProjectActions)
@@ -74,6 +84,243 @@ private actor FakeProjectActions: ProjectProcessActions {
   #expect(model.events.count == 1 && model.events[0].state == .closed)
   #expect(model.events[0].projectBatchID == plan.id)
   #expect(!model.canConfirmProjectStop(plan))
+}
+
+private let bundledNode = "/Applications/Codex.app/Contents/Resources/cua_node/bin/node"
+private let installedBundledNode = [
+  bundledNode, "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+].first { FileManager.default.isExecutableFile(atPath: $0) }
+
+@Test @MainActor func projectStopNeverImplicitlyIncludesManagedHelpers() async throws {
+  let actions = FakeProjectActions()
+  let model = projectModel(ProjectSource([
+    projectRow(900001), projectRow(900002, executable: bundledNode),
+    projectRow(900003, executable: bundledNode),
+  ]), actions)
+  await model.refresh()
+  let plan = try selectedPlan(model)
+  #expect(plan.targets.map(\.id.pid) == [900001])
+  #expect(Set(plan.helperEntries.map(\.id.pid)) == [900002, 900003])
+  #expect(plan.selectingHelpers([]) == nil)
+  #expect(plan.selectingHelpers([plan.targets[0].id]) == nil)
+  try await model.stopProject(plan)
+  #expect(await actions.calls.map(\.pid) == [900001])
+  #expect(await actions.helperCalls.isEmpty)
+}
+
+@Test @MainActor func separateHelperApprovalOnlySignalsSelectedHelper() async throws {
+  let actions = FakeProjectActions()
+  let selected = projectRow(900002, executable: bundledNode)
+  let model = projectModel(ProjectSource([
+    projectRow(900001), selected, projectRow(900003, executable: bundledNode),
+  ]), actions)
+  await model.refresh()
+  let plan = try #require(try selectedPlan(model).selectingHelpers([selected.id]))
+  #expect(plan.mode == .managedHelpers && plan.targets.map(\.id) == [selected.id])
+  #expect(plan.selectingHelpers([selected.id]) == nil)
+  try await model.stopProject(plan)
+  #expect(await actions.calls.isEmpty)
+  #expect(await actions.helperCalls == [selected.id])
+  #expect(model.events.count == 1 && model.events.first?.state == .closed)
+  #expect(!model.canConfirmProjectStop(plan))
+}
+
+@Test @MainActor func separateHelperApprovalRejectsReusedIdentityMovedDirectoryAndChangedUser()
+  async throws
+{
+  let actions = FakeProjectActions()
+  let old = (1...3).map { projectRow(Int32(900000 + $0), executable: bundledNode) }
+  let source = ProjectSource(old)
+  let model = projectModel(source, actions)
+  await model.refresh()
+  let plan = try #require(try selectedPlan(model).selectingHelpers(Set(old.map(\.id))))
+  let foreign = projectRow(900003, executable: bundledNode, uid: getuid() &+ 1)
+  await source.set([
+    projectRow(900001, executable: bundledNode, seconds: 2),
+    projectRow(900002, executable: bundledNode, cwd: "/work/project/moved"), foreign,
+  ])
+  await model.refresh()
+  try await model.stopProject(plan)
+  #expect(await actions.calls.isEmpty)
+  #expect(await actions.helperCalls.isEmpty)
+  #expect(model.events.count == 3)
+  #expect(model.events.allSatisfy { if case .failed = $0.state { true } else { false } })
+}
+
+@Test @MainActor func pendingAndIndirectHelpersCannotBeSelected() async throws {
+  let pending = projectRow(900001, executable: bundledNode)
+  let indirect = projectRow(900002, inherited: true, executable: bundledNode)
+  let model = projectModel(ProjectSource([pending, indirect]), FakeProjectActions())
+  await model.refresh()
+  _ = model.record(process: pending.id, name: "Pending fixture", state: .requested)
+  let plan = try selectedPlan(model)
+  #expect(plan.helperEntries.isEmpty)
+  #expect(plan.selectingHelpers([pending.id, indirect.id]) == nil)
+}
+
+@Test @MainActor func singleProcessHelperReviewPreservesSelectionAndScopesOnlyThatHelper() async throws {
+  let actions = FakeProjectActions()
+  let first = projectRow(900001, executable: bundledNode)
+  let model = projectModel(ProjectSource([first, projectRow(900002, executable: bundledNode)]), actions)
+  await model.refresh()
+  model.selection = .process(first.id)
+  let review = try #require(model.helperStopPlan(for: first))
+  #expect(review.helperEntries.map(\.id) == [first.id])
+  #expect(review.originSelection == .process(first.id))
+  let selected = try #require(review.selectingHelpers([first.id]))
+  #expect(model.canConfirmProjectStop(selected))
+  try await model.stopProject(selected)
+  #expect(await actions.helperCalls == [first.id])
+}
+
+@Test @MainActor func helperBlockReasonsExplainPausedFailedAndChangedSelection() async throws {
+  let row = projectRow(900001, executable: bundledNode)
+  let model = projectModel(ProjectSource([row]), FakeProjectActions())
+  await model.refresh()
+  let plan = try #require(try selectedPlan(model).selectingHelpers([row.id]))
+  #expect(model.projectStopBlockReason(plan) == nil)
+  model.paused = true
+  #expect(model.projectStopBlockReason(plan) == "Ölçüm duraklatıldı; devam ettir.")
+  model.paused = false
+  model.selection = nil
+  #expect(model.projectStopBlockReason(plan)?.contains("seçim değişti") == true)
+  #expect(!model.canConfirmProjectStop(plan))
+}
+
+@Test @MainActor func sessionHistoryBoundsCompletedRecordsAndRetainsPendingOperations() async {
+  let defaults = UserDefaults(suiteName: "SessionHistory." + UUID().uuidString)!
+  let model = Dashboard(source: ProjectSource([]), defaults: defaults)
+  let pending = model.record(process: nil, name: "pending", state: .requested)
+  var latest = pending
+  for number in 0..<(Dashboard.completedEventLimit + 50) {
+    latest = model.record(process: nil, name: "done \(number)", state: .closed)
+  }
+  #expect(model.events.count == Dashboard.completedEventLimit + 1)
+  #expect(model.events.contains { $0.id == pending && $0.state == .requested })
+  #expect(model.events.first?.id == latest)
+  model.setEvent(pending, state: .closed)
+  #expect(model.events.count == Dashboard.completedEventLimit)
+  let reopened = Dashboard(source: ProjectSource([]), defaults: defaults)
+  #expect(reopened.events.isEmpty && reopened.projectResults.isEmpty)
+}
+
+@Test @MainActor func historyCapDoesNotLoseLargeActiveBatchOutcomes() async throws {
+  let rows = (0..<(Dashboard.completedEventLimit + 5)).map { projectRow(Int32(900001 + $0)) }
+  let model = projectModel(ProjectSource(rows), FakeProjectActions())
+  await model.refresh()
+  try await model.stopProject(selectedPlan(model))
+  #expect(model.projectResults.first?.closed == rows.count)
+  #expect(model.events.count == Dashboard.completedEventLimit)
+  #expect(model.pendingProjects.isEmpty)
+}
+
+@Test(arguments: [
+  "/Applications/Codex.app/Contents/Resources/cua_node/bin/node",
+  "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl",
+])
+func helperPermissionIsSeparateFromNormalProcessAndProjectPermission(_ path: String) throws {
+  let helper = projectRow(900001, executable: path)
+  #expect(helper.sample.allowsSeparateHelperStop)
+  #expect(ProjectStopPlan.exclusion(for: helper, pending: false) == ProjectStopPlan.helperApprovalRequired)
+  #expect(ProjectStopPlan.exclusion(for: helper, pending: false, mode: .managedHelpers) == nil)
+  #expect(throws: (any Error).self) {
+    try ProcessMonitor.validateStop(helper.sample, current: helper.sample)
+  }
+  #expect(throws: (any Error).self) {
+    try NativeProjectProcessActions.validateStop(helper.sample, current: helper.sample)
+  }
+  try NativeProjectProcessActions.validateStop(helper.sample, current: helper.sample, mode: .managedHelpers)
+  var reused = helper.sample
+  reused.id = .init(pid: reused.id.pid, seconds: reused.id.seconds, microseconds: 1)
+  #expect(throws: (any Error).self) {
+    try NativeProjectProcessActions.validateStop(helper.sample, current: reused, mode: .managedHelpers)
+  }
+  #expect(!helper.sample.protection!.contains("Aktif"))
+  #expect(helper.stopImpact.contains("Hangi Codex sohbetinin kullandığı bilinmiyor"))
+}
+
+@Test(arguments: [
+  "/Applications/Codex.app/Contents/MacOS/Codex",
+  "/Applications/Codex.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+  "/Applications/Codex.app/Contents/other/node",
+  "/tmp/Applications/Codex.app/Contents/Resources/cua_node/bin/node",
+  "/System/Library/node", "/opt/homebrew/bin/node",
+])
+func separateHelperApprovalCannotBypassOtherProcessProtections(_ path: String) {
+  let row = projectRow(900001, executable: path)
+  #expect(!row.sample.allowsSeparateHelperStop)
+  #expect(ProjectStopPlan.exclusion(for: row, pending: false, mode: .managedHelpers) != nil)
+  #expect(throws: (any Error).self) {
+    try NativeProjectProcessActions.validateStop(row.sample, current: row.sample, mode: .managedHelpers)
+  }
+}
+
+@Test func helperApprovalCannotBypassSystemSelfOrForeignUserProtection() {
+  let base = projectRow(900001, executable: bundledNode).sample
+  var foreign = base
+  foreign.uid = getuid() &+ 1
+  var own = base
+  own.id = .init(pid: getpid(), seconds: 1)
+  var system = base
+  system.id = .init(pid: 1, seconds: 1)
+  for sample in [foreign, own, system] {
+    #expect(!sample.allowsSeparateHelperStop)
+    #expect(throws: (any Error).self) {
+      try NativeProjectProcessActions.validateStop(sample, current: sample, mode: .managedHelpers)
+    }
+  }
+}
+
+@Test(.enabled(if: installedBundledNode != nil))
+@MainActor func realManagedHelperStopOnlyTouchesTheSelectedDisposableChild() async throws {
+  let bundledNode = try #require(installedBundledNode)
+  let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+    .deletingLastPathComponent().deletingLastPathComponent()
+  var children: [Process] = []
+  defer {
+    for child in children where child.isRunning { child.terminate() }
+  }
+  for _ in 0..<2 {
+    let child = Process()
+    child.executableURL = URL(fileURLWithPath: bundledNode)
+    child.arguments = ["-e", "setInterval(() => {}, 1000)"]
+    child.currentDirectoryURL = root
+    try child.run()
+    children.append(child)
+  }
+  // Wait for exec and verify the actual path before enabling the helper-only policy.
+  let deadline = ProcessInfo.processInfo.systemUptime + 3
+  while children.contains(where: { ProcessMonitor.read($0.processIdentifier)?.path != bundledNode }),
+    ProcessInfo.processInfo.systemUptime < deadline
+  { try await Task.sleep(for: .milliseconds(10)) }
+  let rows = try children.map { child in
+    var sample = try #require(ProcessMonitor.read(child.processIdentifier))
+    #expect(sample.path == bundledNode)
+    let cwd: String = try #require(ProcessMonitor.workingDirectory(sample))
+    sample.cwd = cwd
+    var row = ProcessRow(
+      sample: sample, cpu: nil, reasons: [], owner: "Codex",
+      project: ProjectHint(path: root.path, sourcePID: sample.id.pid, inherited: false, hasProjectMarker: true))
+    row.applicationKey = "codex"
+    row.applicationName = "Codex"
+    return row
+  }
+  let model = Dashboard(
+    source: ProjectSource(rows),
+    defaults: UserDefaults(suiteName: "ManagedHelperIntegration." + UUID().uuidString)!)
+  await model.refresh()
+  let app = try #require(model.presentation.applications.first { $0.id == "codex" })
+  let project = try #require(app.projects.first { $0.id == root.path })
+  let key = app.projectKey(project)
+  model.selection = .group(key)
+  let original = try #require(model.projectStopPlan(for: key))
+  #expect(original.targets.isEmpty && original.helperEntries.count == 2)
+  let selected = try #require(original.selectingHelpers([rows[0].id]))
+  try await model.stopProject(selected)
+  #expect(model.events.count == 1 && model.events.first?.state == .closed)
+  #expect(ProcessMonitor.presence(rows[0].id) == .absent)
+  #expect(children[1].isRunning)
+  #expect(ProcessMonitor.presence(rows[1].id) == .sameIdentity)
 }
 @Test @MainActor func projectBatchFailureDoesNotSkipRemainingOrDisappearOnRefresh() async throws {
   let actions = FakeProjectActions(fail: 900001)

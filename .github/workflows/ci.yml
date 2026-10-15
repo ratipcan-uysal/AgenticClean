@@ -32,3 +32,29 @@ jobs:
         run: python3 scripts/public_source.py
       - name: Whitespace validation
         run: git diff --check
+  native-ui:
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Install native project generator
+        run: brew install xcodegen
+      - name: Native helper review journeys (synthetic actions only)
+        run: ./scripts/test-native-ui.sh
+      - name: Preserve native test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-helper-review-evidence
+          path: |
+            dist/verification/native-ui-*/host.json
+            dist/verification/native-ui-*/source-manifest.json
+            dist/verification/native-ui-*/xcodebuild.log
+            dist/verification/native-ui-*/result-verification.json
+            dist/verification/native-ui-*/NativeUI.xcresult/
+          if-no-files-found: error
+          retention-days: 7

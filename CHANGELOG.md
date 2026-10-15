@@ -1,5 +1,13 @@
 # AgenticClean changelog
 
+## 0.7.4 — helper review and session operations
+
+- Review individual Codex Node helpers from either a process inspector or a project, with unchecked selection and separate impact confirmation.
+- Explain disabled review actions and preserve a single-helper review scope when refreshing.
+- Verify the application and exact helper executable with OpenAI Developer ID signatures regardless of installation directory or app filename; preserve coordinator and system protection.
+- Keep only the latest 200 completed operation details and 50 project summaries in memory; retain in-flight results and clear history on app exit.
+- Add an isolated native UI fixture and six XCUITest journeys to CI without requiring a Codex installation or signalling user processes.
+
 ## 0.7.3 — simulator availability fix
 
 - Check the selected developer directory and executable before reading or shutting down iOS simulators; never invoke the xcrun installer shim.

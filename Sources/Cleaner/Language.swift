@@ -114,6 +114,14 @@ enum L10n {
       prefix: "Komut başarısız (", suffix: "", englishPrefix: "Command failed (", englishSuffix: ""),
   ]
   private static let coreStrings: [String: String] = [
+    "Önce durdurmak istediğin yardımcıyı seç.": "First select a helper to stop.",
+    "Ölçüm duraklatıldı; devam ettir.": "Monitoring is paused; resume it first.",
+    "Tarama başarısız; listeyi yeniden tara.": "Scanning failed; scan the list again.",
+    "Liste hazırlanıyor; tamamlanmasını bekle.": "The list is being prepared; wait for it to finish.",
+    "Ölçüm güncel değil; listeyi yenile.": "The measurement is out of date; refresh the list.",
+    "Bu proje için işlem sürüyor; sonucu bekle.": "An operation is in progress for this project; wait for its result.",
+    "Bu işlem zaten gönderildi; güncel listeyi yeniden incele.": "This operation was already submitted; review the current list again.",
+    "Durdurmaya uygun süreç yok.": "No eligible processes.",
     "Bazı kullanıcı süreçleri okunamadı; AI oturumunun kapsamı doğrulanamıyor":
       "Some user processes could not be read; the scope of this AI session cannot be verified",
     "Bazı kullanıcı süreçleri okunamadı; AI oturumunun tüm alt işleri doğrulanamadığı için durdurulmadı.":
@@ -135,6 +143,12 @@ enum L10n {
     "macOS / geliştirici altyapısı": "macOS / developer infrastructure",
     "Aktif ajan uygulaması veya yönetilen yardımcı süreç":
       "Active agent app or a managed helper process",
+    "Ajan uygulaması veya yönetilen yardımcı süreç; etkinliği doğrulanmadı":
+      "Agent app or managed helper; activity has not been verified",
+    "Codex yardımcı süreci; ayrı seçim ve onay gerekli":
+      "Codex helper process; separate selection and approval required",
+    "Hangi Codex sohbetinin kullandığı bilinmiyor. Durdurursan bağlı araç çağrıları ve devam eden işler kesilebilir; yeniden bağlantı gerekebilir.":
+      "Its Codex chat ownership is unknown. Stopping it may interrupt connected tool calls and ongoing work; reconnection may be needed.",
     "Ajan oturumu; yalnızca onaylı proje işlemiyle kapatılabilir":
       "Agent session; can only be stopped through a confirmed project action",
     "Uygulamayı kendi Çıkış menüsünden kapat": "Use this app’s own Quit menu to close it",

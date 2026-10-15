@@ -323,8 +323,8 @@ struct DashboardView: View {
         }
         Button(
           L10n.text(
-            "İşlem geçmişi (\(model.events.count))", "Operation history (\(model.events.count))")
-        ) { sheet = .operations }
+            "Bu oturumdaki işlemler (\(model.events.count))", "This session’s operations (\(model.events.count))")
+        ) { sheet = .operations }.accessibilityIdentifier("nav.operations")
         Button(L10n.text("Simülatörler", "Simulators")) { sheet = .simulators }
         Divider()
         Button(L10n.text("Ölçüm ayrıntıları", "Measurement details")) { sheet = .system }
@@ -510,6 +510,7 @@ struct DashboardView: View {
       }.frame(maxWidth: .infinity, alignment: .leading)
       quantities(cpu: row.cpu, memory: row.sample.footprint, age: row.sample.age)
     }.padding(.vertical, 8).contentShape(Rectangle()).accessibilityElement(children: .combine)
+      .accessibilityIdentifier("process.row.\(row.id.pid)")
       .accessibilityHint(
         L10n.text(
           "İşi incele ve kullanılabilir işlemleri gör", "Inspect this work and available actions"))
@@ -630,6 +631,7 @@ struct DashboardView: View {
       }.frame(maxWidth: .infinity, alignment: .leading)
       quantities(cpu: row.cpu, memory: row.sample.footprint, age: row.sample.age)
     }.padding(.leading, 44 + CGFloat(depth) * 14).padding(.vertical, 7).accessibilityElement(children: .combine)
+      .accessibilityIdentifier("process.row.\(row.id.pid)")
       .accessibilityHint(
         L10n.text(
           "İşlev, proje bağlantısı ve durdurma ayrıntılarını aç",
@@ -748,7 +750,10 @@ struct DashboardView: View {
         .font(.callout).foregroundStyle(AgenticPalette.secondaryText)
       if group.isProject, let plan = model.projectStopPlan(for: group.id) {
         LabeledContent(L10n.text("Durdurmaya uygun", "Eligible to stop"), value: String(plan.targets.count))
-        LabeledContent(L10n.text("Kapsam dışında", "Excluded"), value: String(plan.entries.count - plan.targets.count))
+        if !plan.helperEntries.isEmpty {
+          LabeledContent(L10n.text("Yardımcılar · ayrı onay", "Helpers · separate approval"), value: String(plan.helperEntries.count))
+        }
+        LabeledContent(L10n.text("Kapsam dışında", "Excluded"), value: String(plan.excludedCount - plan.helperEntries.count))
         Text(L10n.text("Durdurmak bu işlere bağlı önizlemeleri, testleri veya AI yanıtlarını kesebilir. Sonraki adımda işleri ve istisnaları inceleyebilirsin.", "Stopping may interrupt previews, tests, or AI responses that depend on these jobs. Review the jobs and exclusions in the next step."))
           .font(.callout).foregroundStyle(AgenticPalette.secondaryText)
       }
@@ -896,6 +901,11 @@ struct DashboardView: View {
           Text(L10n.core(row.sample.protection ?? row.stopImpact)).font(.caption).foregroundStyle(
             .secondary)
           HStack {
+            if let plan = model.helperStopPlan(for: row) {
+              Button(L10n.text("Yardımcıyı ayrı incele…", "Review helper separately…")) {
+                sheet = .project(plan)
+              }.accessibilityIdentifier("process.helperReview")
+            }
             if !row.sample.isDevelopment && row.sample.protection == nil {
               Text(
                 L10n.text(
@@ -904,10 +914,11 @@ struct DashboardView: View {
               ).font(.caption2)
             }
             Spacer()
-            TimelineView(.periodic(from: .now, by: 1)) { _ in
-              Button(L10n.text("Durdur…", "Stop…"), role: .destructive) { stopTarget = row }
-                .disabled(
-                  !model.canStop(row))
+            if model.helperStopPlan(for: row) == nil {
+              TimelineView(.periodic(from: .now, by: 1)) { _ in
+                Button(L10n.text("Durdur…", "Stop…"), role: .destructive) { stopTarget = row }
+                  .disabled(!model.canStop(row))
+              }
             }
           }
         }.padding(12)
@@ -973,7 +984,7 @@ private enum DashboardSheet: Identifiable {
     case .cleanup: L10n.text("AgenticClean — Disk alanı", "AgenticClean — Disk space")
     case .docker: "AgenticClean — Docker"
     case .groupHistory: L10n.text("AgenticClean — Proje geçmişi", "AgenticClean — Project history")
-    case .operations: L10n.text("AgenticClean — İşlem geçmişi", "AgenticClean — Operation history")
+    case .operations: L10n.text("AgenticClean — Bu oturumdaki işlemler", "AgenticClean — This session’s operations")
     case .simulators: L10n.text("AgenticClean — Simülatörler", "AgenticClean — Simulators")
     case .history: L10n.text("AgenticClean — Grafikler", "AgenticClean — Charts")
     case .system: L10n.text("AgenticClean — Ölçüm ayrıntıları", "AgenticClean — Measurement details")
