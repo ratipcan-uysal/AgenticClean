@@ -1,4 +1,4 @@
-# AgenticClean v0.7.6-alpha.1
+# AgenticClean v0.7.7-alpha.1
 
 Early access, macOS only. MIT licensed. The release includes an Apple Silicon ZIP signed with Developer ID and notarized by Apple.
 
@@ -14,6 +14,8 @@ Early access, macOS only. MIT licensed. The release includes an Apple Silicon ZI
 - Turkish and English UI, no telemetry or chat database access.
 
 ## Validation and limits
+
+For v0.7.7-alpha.1, [release-source CI](https://github.com/ratipcan-uysal/AgenticClean/actions/runs/38804447630) passed all 206 core tests, all eleven native XCUITest journeys and the optimized arm64 build on Xcode 26.2 / Swift 6.2.3. Disk-measurement regressions cover signed/unknown changes, cancellation, uncertain simulator outcomes and late older reads. The delete/erase native journeys also verify automatic main-card updates and explicit refresh preserving the completed action’s before/after record. Simulator actions and disk values in these UI tests are synthetic. The development build’s real-volume read and disk-only Refresh were checked locally; no real simulator was created, erased or deleted for this work.
 
 For v0.7.6-alpha.1 on 2026-10-15, [release-source CI](https://github.com/ratipcan-uysal/AgenticClean/actions/runs/38793279585) passed all 200 core tests, the release build and all eleven native XCUITest journeys on Xcode 26.2 / Swift 6.2. Twelve new simulator-storage regressions and four new simulator UI journeys are included. Destructive simulator UI actions use a synthetic simctl transport; no real simulator was erased or deleted. The real 40-device inventory and shutdown-only filtering were checked locally. Local redundant compile attempts were aborted on the slow host; the complete suite result above is CI evidence.
 
@@ -53,3 +55,13 @@ Developer ID signing with hardened runtime and timestamp passed. Apple accepted 
 [Download v0.7.6-alpha.1](https://github.com/ratipcan-uysal/AgenticClean/releases/tag/v0.7.6-alpha.1). Device sizes exclude shared iOS runtimes and are not guaranteed recoverable space. Shutdown does not establish that a device is unused. Erase/delete permanently remove device data and cannot be restored from Trash; no devices start selected.
 
 Second physical Mac installation, minimum-OS compatibility, comprehensive VoiceOver and participant usability validation remain unverified.
+
+## v0.7.7-alpha.1 verification
+
+Application source is `e845be498fcd6732e56b1e74c1d2f3438d3b8c39`, merged to main in `9f81ba0b3d5188de0589ece56fca7bbf4a64a92c`. The optimized arm64 CI build `a9db51e-20261015T205145Z` came from tested integration commit `a9db51e75a6b252bfa64609a5e3d460dc8c9eeb8`; all 98 curated source files were matched to the PR before signing. Later release documentation does not change application/test/build sources.
+
+Developer ID signing with hardened runtime and timestamp passed. Apple accepted notarization submission `da08fc0b-cb33-44da-b445-7ba7f0a946c9`; staple validation, strict signatures and Gatekeeper assessment passed. The final ZIP SHA256 is `427a00655a0b4a5b8817d681ae5be9f2954eb16ebb001ade9e181ae5a91ee328`.
+
+[Download v0.7.7-alpha.1](https://github.com/ratipcan-uysal/AgenticClean/releases/tag/v0.7.7-alpha.1). Simulator erase/delete now refresh the shared disk card before and after the batch. A separate Refresh updates current availability. The last batch’s signed net change includes other apps and APFS effects; it is not attributed recovered bytes, and unavailable measurements remain unknown.
+
+Second physical Mac, minimum-OS hardware, comprehensive VoiceOver and participant usability checks remain unverified.
