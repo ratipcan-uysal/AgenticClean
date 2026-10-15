@@ -2,6 +2,8 @@
 
 ## 0.7.4 — helper review and session operations
 
+- Keep simulator history collapsed inside the device scroll area, with compact latest results, so completed shutdowns do not shrink the running-device list.
+
 - Review individual Codex Node helpers from either a process inspector or a project, with unchecked selection and separate impact confirmation.
 - Explain disabled review actions and preserve a single-helper review scope when refreshing.
 - Verify the application and exact helper executable with OpenAI Developer ID signatures regardless of installation directory or app filename; preserve coordinator and system protection.
