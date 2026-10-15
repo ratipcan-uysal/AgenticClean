@@ -23,7 +23,7 @@ def command(arguments):
     return {'exitCode': p.returncode, 'output': p.stdout.strip()}
 meta = {'architecture': platform.machine(), 'macOS': command(['sw_vers']),
         'xcode': command(['xcodebuild', '-version']),
-        'bundleIdentifier': 'local.cleaner.native-ui-harness',
+        'buildIdentity': json.loads((out / 'build-identity.json').read_text()),
         'syntheticActions': True, 'realProcessSignals': False,
         'appearance': 'dark (Dashboard), default (standalone fixture panels)',
         'locale': 'en', 'maximumRequestedWindowSize': [1200, 800],

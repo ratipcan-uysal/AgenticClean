@@ -6,6 +6,8 @@ import XCTest
 @MainActor final class HelperStopUITests: XCTestCase {
   private var app: XCUIApplication!
   private var logURL: URL!
+  private var applicationURL: URL!
+  private var expectedBuildID = ""
 
   // XCTest synchronous lifecycle overrides are nonisolated. Keep UI fixture ownership
   // entirely in each @MainActor test instead of crossing that inherited boundary.
@@ -13,7 +15,24 @@ import XCTest
     continueAfterFailure = true
     logURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("cleaner-native-ui-" + UUID().uuidString + ".json")
-    app = XCUIApplication(bundleIdentifier: "local.cleaner.native-ui-harness")
+    let configuration = Bundle(for: HelperStopUITests.self)
+    guard let path = configuration.object(forInfoDictionaryKey: "CleanerNativeUIHarnessPath") as? String,
+      let buildID = configuration.object(forInfoDictionaryKey: "CleanerNativeUIBuildID") as? String,
+      !buildID.isEmpty else {
+      XCTFail("Missing generated fixture build identity")
+      throw FixtureFailure.unavailable("generated build identity")
+    }
+    applicationURL = URL(fileURLWithPath: path).resolvingSymlinksInPath()
+    expectedBuildID = buildID
+    guard let product = Bundle(url: applicationURL),
+      product.bundleIdentifier?.hasPrefix("local.cleaner.native-ui-harness.") == true,
+      product.object(forInfoDictionaryKey: "CleanerNativeUIBuildID") as? String == buildID else {
+      XCTFail("The requested app product does not match this test build")
+      throw FixtureFailure.unavailable("fixture product identity")
+    }
+    // Pin the actual product URL. Bundle-ID lookup can select an older generated app
+    // registered by LaunchServices, even while the newest source compiled successfully.
+    app = XCUIApplication(url: applicationURL)
     app.launchEnvironment["CLEANER_UI_FIXTURE_LOG"] = logURL.path
     try launchFixture()
   }
@@ -25,7 +44,10 @@ import XCTest
       add(attachment)
       app.terminate()
     }
-    if let logURL { try? FileManager.default.removeItem(at: logURL) }
+    if let logURL {
+      try? FileManager.default.removeItem(at: logURL)
+      try? FileManager.default.removeItem(atPath: logURL.path + ".identity.json")
+    }
   }
   private enum FixtureFailure: Error { case unavailable(String) }
   private func captureDiagnostics(_ reason: String) {
@@ -49,6 +71,7 @@ import XCTest
     }
   }
   private func launchFixture() throws {
+    try? FileManager.default.removeItem(atPath: logURL.path + ".identity.json")
     app.launch()
     let ready = app.staticTexts["harness.ready"]
     try requireExists(ready, "ready fixture", timeout: 10)
@@ -59,6 +82,21 @@ import XCTest
       captureDiagnostics("Fixture ready state did not complete")
       XCTFail("Fixture ready state did not complete")
       throw FixtureFailure.unavailable("ready state")
+    }
+    let identity = try Data(contentsOf: URL(fileURLWithPath: logURL.path + ".identity.json"))
+    let attachment = XCTAttachment(data: identity, uniformTypeIdentifier: "public.json")
+    attachment.name = "Running fixture build identity and window bounds"
+    attachment.lifetime = .keepAlways
+    add(attachment)
+    guard let metadata = try JSONSerialization.jsonObject(with: identity) as? [String: Any],
+      metadata["buildID"] as? String == expectedBuildID,
+      metadata["bundlePath"] as? String == applicationURL.path,
+      let width = metadata["contentWidth"] as? Double,
+      let height = metadata["contentHeight"] as? Double,
+      width <= 1200, height <= 800 else {
+      captureDiagnostics("Running fixture identity or window bounds mismatch")
+      XCTFail("Running fixture must match this build and fit within 1200x800")
+      throw FixtureFailure.unavailable("running build identity")
     }
   }
   private func visibleText(_ target: XCUIElement) -> String {

@@ -3,7 +3,7 @@
 `./scripts/test-native-ui.sh` snapshots the current production `DashboardView`,
 `ProjectStopView`, `OperationsView` and their dependencies into an isolated XcodeGen
 project, compiles them unchanged, and runs six macOS XCUITests. The production app
-entry point is replaced by a **test-only app** (`local.cleaner.native-ui-harness`).
+entry point is replaced by a **test-only app** (`local.cleaner.native-ui-harness.<unique-run>`).
 No test flags, fixture arguments or action overrides are added to the released app.
 
 The fixture uses existing `Dashboard` injection points and a fake actor implementing
@@ -37,7 +37,7 @@ Xcode's UI test runner. Only one native GUI owner should run at a time.
 ```
 
 Evidence is saved in a unique ignored `dist/verification/native-ui-*` directory:
-source hashes, host/build identity, build log, screenshots inside the `.xcresult`, and
+source hashes, unique bundle/build identity, build log, screenshots inside the `.xcresult`, and
 an explicit expected-versus-executed result report. `latest-native-ui.txt` points to
 the latest attempt. A zero-test, skipped-test, failed-test or unreadable result cannot
 produce PASS. No GitHub token, Codex install or account is needed.
@@ -46,3 +46,9 @@ For CI use a macOS runner with Xcode/Swift 6.2+, install XcodeGen, run the scrip
 upload the complete attempt directory on both success and failure. GUI/runner failures
 must remain failed or blocked checks. Do not skip and report a native journey as passed.
 Hosted runner success does not establish another macOS version or a second physical Mac.
+
+Each generated run has a unique fixture bundle identifier. Tests launch its exact built
+product URL, compare the generated build ID with the product plist, and independently
+read the running app's bundle path/build ID and actual content dimensions. An older
+LaunchServices registration or oversized window therefore fails before the journey.
+The running identity/window JSON is retained as an `.xcresult` attachment.

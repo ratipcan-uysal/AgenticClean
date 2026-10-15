@@ -38,6 +38,9 @@ let package = Package(name: "CleanerNativeUITestLibraries", platforms: [.macOS(.
     .target(name: "CleanerCore", dependencies: ["ProcessKit"],
       swiftSettings: [.unsafeFlags(["-enable-testing"])])])
 ''')
+build_id = out.name + '-' + hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()[:12]
+bundle_id = 'local.cleaner.native-ui-harness.' + out.name.lower()
+product_path = out / 'DerivedData' / 'Build' / 'Products' / 'Debug' / 'CleanerNativeUIHarness.app'
 spec = {
     'name': 'CleanerNativeUI',
     'options': {'deploymentTarget': {'macOS': '14.0'}, 'createIntermediateGroups': True},
@@ -51,7 +54,8 @@ spec = {
             'sources': ['ProductionUI', 'Harness'],
             'dependencies': [{'package': 'CleanerLibraries', 'product': 'CleanerCore'}],
             'settings': {'base': {
-                'PRODUCT_BUNDLE_IDENTIFIER': 'local.cleaner.native-ui-harness',
+                'PRODUCT_BUNDLE_IDENTIFIER': bundle_id,
+                'INFOPLIST_KEY_CleanerNativeUIBuildID': build_id,
                 'SWIFT_DEFAULT_ACTOR_ISOLATION': 'MainActor',
                 'OTHER_SWIFT_FLAGS': '$(inherited) -enable-upcoming-feature NonisolatedNonsendingByDefault',
                 'ENABLE_APP_SANDBOX': False, 'GENERATE_INFOPLIST_FILE': True,
@@ -64,7 +68,9 @@ spec = {
             'type': 'bundle.ui-testing', 'platform': 'macOS', 'sources': ['UITests'],
             'dependencies': [{'target': 'CleanerNativeUIHarness'}],
             'settings': {'base': {
-                'PRODUCT_BUNDLE_IDENTIFIER': 'local.cleaner.native-ui-harness.tests',
+                'PRODUCT_BUNDLE_IDENTIFIER': bundle_id + '.tests',
+                'INFOPLIST_KEY_CleanerNativeUIBuildID': build_id,
+                'INFOPLIST_KEY_CleanerNativeUIHarnessPath': str(product_path),
                 'GENERATE_INFOPLIST_FILE': True,
                 'TEST_TARGET_NAME': 'CleanerNativeUIHarness',
             }},
@@ -77,5 +83,6 @@ spec = {
     }},
 }
 (out / 'project.yml').write_text(json.dumps(spec, indent=2) + '\n')
+(out / 'build-identity.json').write_text(json.dumps({'buildID': build_id, 'bundleIdentifier': bundle_id, 'productPath': str(product_path)}, indent=2) + '\n')
 (out / 'source-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
 print(out / 'project.yml')

@@ -80,6 +80,7 @@ actor FixtureWorld: SnapshotSource, ProjectProcessActions {
   private var window: NSWindow?
   private let world: FixtureWorld
   private let model: Dashboard
+  private let identityURL: URL
 
   override init() {
     // This bundle's preferences are separate from the real AgenticClean application's domain.
@@ -91,6 +92,7 @@ actor FixtureWorld: SnapshotSource, ProjectProcessActions {
       ?? NSTemporaryDirectory() + "cleaner-ui-fixture-" + UUID().uuidString + ".json"
     let world = FixtureWorld(logURL: URL(fileURLWithPath: path))
     self.world = world
+    self.identityURL = URL(fileURLWithPath: path + ".identity.json")
     self.model = Dashboard(source: world, defaults: .standard, projectActions: world)
     self.model.interval = 300
     super.init()
@@ -138,9 +140,23 @@ actor FixtureWorld: SnapshotSource, ProjectProcessActions {
     }
     window?.makeKeyAndOrderFront(nil)
     if let window, let content = window.contentView {
-      NSLog("Native UI fixture content %.0fx%.0f; frame %@; visible screen %@",
-            content.bounds.width, content.bounds.height, NSStringFromRect(window.frame),
-            NSStringFromRect(window.screen?.visibleFrame ?? .zero))
+      let visible = window.screen?.visibleFrame ?? .zero
+      let metadata: [String: Any] = [
+        "buildID": Bundle.main.object(forInfoDictionaryKey: "CleanerNativeUIBuildID") as? String ?? "missing",
+        "bundleIdentifier": Bundle.main.bundleIdentifier ?? "missing",
+        "bundlePath": Bundle.main.bundleURL.resolvingSymlinksInPath().path,
+        "executablePath": Bundle.main.executableURL?.resolvingSymlinksInPath().path ?? "missing",
+        "pid": ProcessInfo.processInfo.processIdentifier,
+        "contentWidth": content.bounds.width, "contentHeight": content.bounds.height,
+        "frameX": window.frame.minX, "frameY": window.frame.minY,
+        "frameWidth": window.frame.width, "frameHeight": window.frame.height,
+        "screenX": visible.minX, "screenY": visible.minY,
+        "screenWidth": visible.width, "screenHeight": visible.height,
+      ]
+      if let data = try? JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys]) {
+        try? data.write(to: identityURL, options: .atomic)
+      }
+      NSLog("Native UI fixture identity %@", metadata.description)
     }
     NSApp.activate(ignoringOtherApps: true)
   }
