@@ -44,6 +44,23 @@ struct ProjectStopView: View {
       "\(closed) closed · \(active) still running · \(uncertain) unverified · \(failed) failed") + progress
   }
   var body: some View {
+    panelContent
+      .alert(
+        helperConfirmationTitle,
+        isPresented: $confirmingHelpers,
+        presenting: helperConfirmation,
+        actions: { (confirmed: ProjectStopPlan) in
+          helperConfirmationActions(for: confirmed)
+        },
+        message: { (confirmed: ProjectStopPlan) in
+          Text(helperConfirmationMessage(for: confirmed))
+        }
+      )
+      .onChange(of: running || refreshing) { (_: Bool, value: Bool) in
+        setPanelBusy(value)
+      }
+  }
+  private var panelContent: some View {
     VStack(alignment: .leading, spacing: 16) {
       header
       projectDetails
@@ -52,26 +69,33 @@ struct ProjectStopView: View {
       operationStatus
       actionBar
     }.padding(24).frame(width: 680, height: 620)
-    .alert(
-      L10n.text("Seçilen Codex yardımcıları durdurulsun mu?", "Stop the selected Codex helpers?"),
-      isPresented: $confirmingHelpers, presenting: helperConfirmation
-    ) { confirmed in
-      Button(L10n.text("Vazgeç", "Cancel"), role: .cancel) {}
-        .accessibilityIdentifier("helpers.cancel")
-      Button(
-        L10n.text("\(confirmed.targets.count) yardımcıyı durdur", "Stop \(confirmed.targets.count) helpers"),
-        role: .destructive
-      ) { submit(confirmed) }.accessibilityIdentifier("helpers.confirm")
-    } message: { confirmed in
+  }
+  private var helperConfirmationTitle: Text {
+    Text(L10n.text(
+      "Seçilen Codex yardımcıları durdurulsun mu?", "Stop the selected Codex helpers?"))
+  }
+  @ViewBuilder
+  private func helperConfirmationActions(for confirmed: ProjectStopPlan) -> some View {
+    Button(role: .cancel, action: {}) {
+      Text(L10n.text("Vazgeç", "Cancel"))
+    }
+    .accessibilityIdentifier("helpers.cancel")
+    Button(role: .destructive, action: { submit(confirmed) }) {
       Text(L10n.text(
-        "Hangi Codex sohbetinin kullandığı bilinmiyor. Bağlı araç çağrıları ve devam eden işler kesilebilir; yeniden bağlantı gerekebilir. Yalnızca seçtiğin yardımcılara kapatma isteği gönderilir. Diğer proje işleri bu işleme dahil değildir.",
-        "Their Codex chat ownership is unknown. Connected tool calls and ongoing work may be interrupted; reconnection may be needed. Only the selected helpers receive a stop request. Other project tasks are not included."
-      ) + "\n\n" + confirmed.path + "\nPID: "
-        + confirmed.targets.map { String($0.id.pid) }.joined(separator: ", "))
+        "\(confirmed.targets.count) yardımcıyı durdur", "Stop \(confirmed.targets.count) helpers"))
     }
-    .onChange(of: running || refreshing) { _, value in
-      setPanelBusy(value)
+    .accessibilityIdentifier("helpers.confirm")
+  }
+  private func helperConfirmationMessage(for confirmed: ProjectStopPlan) -> String {
+    let warning: String = L10n.text(
+      "Hangi Codex sohbetinin kullandığı bilinmiyor. Bağlı araç çağrıları ve devam eden işler kesilebilir; yeniden bağlantı gerekebilir. Yalnızca seçtiğin yardımcılara kapatma isteği gönderilir. Diğer proje işleri bu işleme dahil değildir.",
+      "Their Codex chat ownership is unknown. Connected tool calls and ongoing work may be interrupted; reconnection may be needed. Only the selected helpers receive a stop request. Other project tasks are not included."
+    )
+    let pidParts: [String] = confirmed.targets.map { (row: ProcessRow) -> String in
+      String(row.id.pid)
     }
+    let pids: String = pidParts.joined(separator: ", ")
+    return "\(warning)\n\n\(confirmed.path)\nPID: \(pids)"
   }
   private var headerTitle: String {
     if showingResults {
