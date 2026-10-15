@@ -1,4 +1,4 @@
-# Native helper-stop journeys
+# Native inspection and simulator-storage journeys
 
 `./scripts/test-native-ui.sh` snapshots the current production `DashboardView`,
 `ProjectStopView`, `OperationsView` and their dependencies into an isolated XcodeGen

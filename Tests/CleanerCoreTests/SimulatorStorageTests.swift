@@ -172,3 +172,18 @@ private actor StorageEnvironment: SimulatorEnvironment, SimulatorStorageService 
   #expect(!model.running && model.checked.isEmpty)
   #expect(await env.mutations == [["delete", simA]])
 }
+
+@Test @MainActor func storageMeasurementsNeverTurnAnUnknownTotalIntoZeroOrOverflow() async throws {
+  let a = storageDevice(simA, bytes: nil), env = StorageEnvironment([storageDevice(simA, bytes: nil)])
+  let model = SimulatorStorage(service: env)
+  await model.refresh(); model.select(a, checked: true); model.review(.erase)
+  #expect(model.measuredBytes == nil && model.unknownSizeCount == 1)
+  #expect(model.plan?.measuredBytes == nil && model.plan?.unknownSizeCount == 1)
+  model.dismissReview()
+  await env.set([storageDevice(simA, bytes: UInt64.max), storageDevice(simB, bytes: 1)])
+  await model.refresh()
+  #expect(model.measuredBytes == nil)
+  await env.set([])
+  await model.refresh()
+  #expect(model.measuredBytes == 0)
+}

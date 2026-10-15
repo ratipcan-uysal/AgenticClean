@@ -22,7 +22,7 @@ public struct SimulatorStoragePlan: Identifiable, Sendable {
   public let id = UUID()
   public let action: SimulatorStorageAction
   public let devices: [SimulatorDevice]
-  public var measuredBytes: UInt64 { devices.compactMap(\.measuredBytes).reduce(0, +) }
+  public var measuredBytes: UInt64? { totalMeasured(devices) }
   public var unknownSizeCount: Int { devices.filter { $0.measuredBytes == nil }.count }
 }
 public protocol SimulatorStorageService: Sendable {
@@ -53,7 +53,7 @@ public struct NativeSimulatorStorageService: SimulatorStorageService {
   @ObservationIgnored private let service: any SimulatorStorageService
   @ObservationIgnored private var batch: Task<Void, Never>?
   public init(service: any SimulatorStorageService = NativeSimulatorStorageService()) { self.service = service }
-  public var measuredBytes: UInt64 { devices.compactMap(\.measuredBytes).reduce(0, +) }
+  public var measuredBytes: UInt64? { totalMeasured(devices) }
   public var unknownSizeCount: Int { devices.filter { $0.measuredBytes == nil }.count }
   public var selected: [SimulatorDevice] { devices.filter { checked.contains($0.id) && $0.canReviewStorage } }
   public func select(_ device: SimulatorDevice, checked value: Bool) {
@@ -100,4 +100,17 @@ public struct NativeSimulatorStorageService: SimulatorStorageService {
   /// Finish the in-flight device; stop before submitting the next one.
   public func cancelRemaining() { if running { cancellationRequested = true } }
   public func waitForBatch() async { await batch?.value }
+}
+
+private func totalMeasured(_ devices: [SimulatorDevice]) -> UInt64? {
+  if devices.isEmpty { return 0 }
+  let values = devices.compactMap(\.measuredBytes)
+  guard !values.isEmpty else { return nil }
+  var total: UInt64 = 0
+  for value in values {
+    let (next, overflow) = total.addingReportingOverflow(value)
+    guard !overflow else { return nil }
+    total = next
+  }
+  return total
 }
