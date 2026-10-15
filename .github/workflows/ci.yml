@@ -35,7 +35,7 @@ jobs:
       - name: Package development candidate
         run: |
           candidate="$(cat dist/latest-candidate.txt)"
-          lipo -verify_arch arm64 "$candidate/Contents/MacOS/Cleaner"
+          lipo "$candidate/Contents/MacOS/Cleaner" -verify_arch arm64
           ditto -c -k --sequesterRsrc --keepParent "$candidate" dist/AgenticClean-development-arm64.zip
           shasum -a 256 dist/AgenticClean-development-arm64.zip > dist/AgenticClean-development-arm64.zip.sha256
           cp "$candidate/Contents/Info.plist" dist/development-candidate-info.plist
