@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import plistlib
 from pathlib import Path
 import shutil
 
@@ -55,13 +56,10 @@ spec = {
             'dependencies': [{'package': 'CleanerLibraries', 'product': 'CleanerCore'}],
             'settings': {'base': {
                 'PRODUCT_BUNDLE_IDENTIFIER': bundle_id,
-                'INFOPLIST_KEY_CleanerNativeUIBuildID': build_id,
                 'SWIFT_DEFAULT_ACTOR_ISOLATION': 'MainActor',
                 'OTHER_SWIFT_FLAGS': '$(inherited) -enable-upcoming-feature NonisolatedNonsendingByDefault',
-                'ENABLE_APP_SANDBOX': False, 'GENERATE_INFOPLIST_FILE': True,
-                'INFOPLIST_KEY_LSUIElement': False,
-                'INFOPLIST_KEY_CFBundleDisplayName': 'AgenticClean Native UI Fixture',
-                'INFOPLIST_KEY_NSHumanReadableCopyright': 'Test-only synthetic fixture',
+                'ENABLE_APP_SANDBOX': False, 'GENERATE_INFOPLIST_FILE': False,
+                'INFOPLIST_FILE': 'Harness-Info.plist',
             }},
         },
         'CleanerNativeUITests': {
@@ -69,9 +67,8 @@ spec = {
             'dependencies': [{'target': 'CleanerNativeUIHarness'}],
             'settings': {'base': {
                 'PRODUCT_BUNDLE_IDENTIFIER': bundle_id + '.tests',
-                'INFOPLIST_KEY_CleanerNativeUIBuildID': build_id,
-                'INFOPLIST_KEY_CleanerNativeUIHarnessPath': str(product_path),
-                'GENERATE_INFOPLIST_FILE': True,
+                'GENERATE_INFOPLIST_FILE': False,
+                'INFOPLIST_FILE': 'UITests-Info.plist',
                 'TEST_TARGET_NAME': 'CleanerNativeUIHarness',
             }},
         },
@@ -82,6 +79,27 @@ spec = {
                  'parallelizable': False, 'randomExecutionOrder': False},
     }},
 }
+# Custom INFOPLIST_KEY_* settings are not reliably emitted by Xcode's generated
+# plist processor. Materialize complete input plists so build identity cannot vanish.
+base_plist = {
+    'CFBundleDevelopmentRegion': '$(DEVELOPMENT_LANGUAGE)',
+    'CFBundleExecutable': '$(EXECUTABLE_NAME)',
+    'CFBundleIdentifier': '$(PRODUCT_BUNDLE_IDENTIFIER)',
+    'CFBundleInfoDictionaryVersion': '6.0',
+    'CFBundleName': '$(PRODUCT_NAME)',
+    'CFBundleShortVersionString': '1.0',
+    'CFBundleVersion': '1',
+    'CleanerNativeUIBuildID': build_id,
+}
+app_plist = dict(base_plist, CFBundlePackageType='APPL',
+                 CFBundleDisplayName='AgenticClean Native UI Fixture',
+                 LSMinimumSystemVersion='14.0', LSUIElement=False,
+                 NSHighResolutionCapable=True,
+                 NSHumanReadableCopyright='Test-only synthetic fixture')
+test_plist = dict(base_plist, CFBundlePackageType='BNDL',
+                  CleanerNativeUIHarnessPath=str(product_path))
+for name, value in [('Harness-Info.plist', app_plist), ('UITests-Info.plist', test_plist)]:
+    (out / name).write_bytes(plistlib.dumps(value, sort_keys=True))
 (out / 'project.yml').write_text(json.dumps(spec, indent=2) + '\n')
 (out / 'build-identity.json').write_text(json.dumps({'buildID': build_id, 'bundleIdentifier': bundle_id, 'productPath': str(product_path)}, indent=2) + '\n')
 (out / 'source-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
